@@ -49,6 +49,14 @@ const ar: Translations = {
     debugTab: "تصحيح",
     communityTab: "واصل اجتماعي",
     podcastListTab: "البودكاست",
+    pdfTab: "PDF",
+  },
+  pdfViewerScreen: {
+    title: "عرض PDF",
+    selectPdf: "اختر PDF",
+    selectAnother: "اختر آخر",
+    noFileSelected: "لم يتم اختيار ملف PDF. اضغط الزر أدناه لاختيار واحد.",
+    webUnsupported: "استخدم تطبيق الجوال لعرض ملفات PDF.",
   },
   demoCommunityScreen: {
     title: "تواصل مع المجتمع",

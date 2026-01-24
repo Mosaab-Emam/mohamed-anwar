@@ -48,6 +48,14 @@ const en = {
     debugTab: "Debug",
     communityTab: "Community",
     podcastListTab: "Podcast",
+    pdfTab: "PDF",
+  },
+  pdfViewerScreen: {
+    title: "PDF Viewer",
+    selectPdf: "Select PDF",
+    selectAnother: "Select another",
+    noFileSelected: "No PDF selected. Tap the button below to choose one.",
+    webUnsupported: "Use the mobile app to view PDFs.",
   },
   demoCommunityScreen: {
     title: "Connect with the community",
