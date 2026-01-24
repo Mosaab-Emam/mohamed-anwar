@@ -1,0 +1,8 @@
+diff --git a/node_modules/@expo/metro/metro-resolver/createDefaultContext.js b/node_modules/@expo/metro/metro-resolver/createDefaultContext.js
+index 0000000..1111111 100644
+--- a/node_modules/@expo/metro/metro-resolver/createDefaultContext.js
++++ b/node_modules/@expo/metro/metro-resolver/createDefaultContext.js
+@@ -1 +1,2 @@
+-module.exports = require("metro-resolver/private/createDefaultContext");
++const createDefaultContext = require("metro-resolver/private/createDefaultContext");
++module.exports = typeof createDefaultContext === 'function' ? createDefaultContext : createDefaultContext.default || createDefaultContext;
