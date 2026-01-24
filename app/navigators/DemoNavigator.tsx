@@ -9,6 +9,7 @@ import { DemoCommunityScreen } from "@/screens/DemoCommunityScreen"
 import { DemoDebugScreen } from "@/screens/DemoDebugScreen"
 import { DemoPodcastListScreen } from "@/screens/DemoPodcastListScreen"
 import { DemoShowroomScreen } from "@/screens/DemoShowroomScreen/DemoShowroomScreen"
+import { PdfViewerScreen } from "@/screens/PdfViewerScreen"
 import { useAppTheme } from "@/theme/context"
 import type { ThemedStyle } from "@/theme/types"
 
@@ -92,6 +93,17 @@ export function DemoNavigator() {
             tabBarLabel: translate("demoNavigator:debugTab"),
             tabBarIcon: ({ focused }) => (
               <Icon icon="debug" color={focused ? colors.tint : colors.tintInactive} size={30} />
+            ),
+          }}
+        />
+
+        <Tab.Screen
+          name="PdfViewer"
+          component={PdfViewerScreen}
+          options={{
+            tabBarLabel: translate("demoNavigator:pdfTab"),
+            tabBarIcon: ({ focused }) => (
+              <Icon icon="view" color={focused ? colors.tint : colors.tintInactive} size={30} />
             ),
           }}
         />
