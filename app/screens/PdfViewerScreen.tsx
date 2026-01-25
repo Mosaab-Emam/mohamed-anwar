@@ -326,6 +326,7 @@ export const PdfViewerScreen: FC<DemoTabScreenProps<"PdfViewer">> = (props) => {
                   <QRCode
                     value={generateDeepLinkUrl() ?? ""}
                     size={250}
+                    quietZone={20}
                     getRef={(c) => {
                       qrSvgRef.current = c
                     }}
@@ -430,7 +431,7 @@ const $qrCodeContainer: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   borderRadius: 8,
   justifyContent: "center",
   marginBottom: spacing.lg,
-  padding: spacing.md,
+  padding: spacing.lg,
 })
 
 const $qrModalButtons: ThemedStyle<ViewStyle> = ({ spacing }) => ({
