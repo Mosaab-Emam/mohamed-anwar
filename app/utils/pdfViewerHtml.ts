@@ -71,6 +71,14 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
         var nextBtn = document.getElementById('nextBtn');
         if (prevBtn) { prevBtn.disabled = n <= 1; }
         if (nextBtn) { nextBtn.disabled = n >= numPages; }
+        // Notify React Native of page change
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'pageChanged',
+            page: n,
+            totalPages: numPages
+          }));
+        }
         container.innerHTML = '';
         pdfDoc.getPage(n).then(function(p) {
           var v1 = p.getViewport(1);

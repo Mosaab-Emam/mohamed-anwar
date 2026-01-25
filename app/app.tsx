@@ -51,6 +51,13 @@ const config = {
         DemoDebug: "debug",
         DemoPodcastList: "podcast",
         DemoCommunity: "community",
+        PdfViewer: {
+          path: "pdf",
+          parse: {
+            fileId: (fileId: string) => decodeURIComponent(fileId),
+            page: (page: string) => parseInt(page, 10) || 1,
+          },
+        },
       },
     },
   },

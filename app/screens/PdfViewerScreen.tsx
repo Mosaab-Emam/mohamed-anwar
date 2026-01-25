@@ -1,17 +1,30 @@
-import { FC, useCallback, useEffect, useMemo, useState } from "react"
-import { ActivityIndicator, Platform, StyleSheet, TextStyle, View, ViewStyle } from "react-native"
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  ActivityIndicator,
+  Modal,
+  Platform,
+  StyleSheet,
+  TextStyle,
+  TouchableOpacity,
+  View,
+  ViewStyle,
+} from "react-native"
 import * as DocumentPicker from "expo-document-picker"
+import * as MediaLibrary from "expo-media-library"
 import * as FileSystem from "expo-file-system/legacy"
+import QRCode from "react-native-qrcode-svg"
 import { WebView } from "react-native-webview"
 
 import { Button } from "@/components/Button"
 import { EmptyState } from "@/components/EmptyState"
 import { Screen } from "@/components/Screen"
 import { Text } from "@/components/Text"
+import { translate } from "@/i18n/translate"
 import { DemoTabScreenProps } from "@/navigators/navigationTypes"
 import { useAppTheme } from "@/theme/context"
 import { $styles } from "@/theme/styles"
 import type { ThemedStyle } from "@/theme/types"
+import { getPdfFile, storePdfFile } from "@/utils/pdfFileStorage"
 import { getPdfViewerHtml } from "@/utils/pdfViewerHtml"
 import { useHeader } from "@/utils/useHeader"
 
@@ -24,6 +37,16 @@ export const PdfViewerScreen: FC<DemoTabScreenProps<"PdfViewer">> = (props) => {
   const [base64, setBase64] = useState<string | null>(null)
   const [base64Error, setBase64Error] = useState<string | null>(null)
   const [webViewReady, setWebViewReady] = useState(false)
+  const [currentPage, setCurrentPage] = useState(() => {
+    const pageFromParams = route.params?.page
+    return pageFromParams && pageFromParams > 0 ? pageFromParams : 1
+  })
+  const [fileId, setFileId] = useState<string | null>(null)
+  const [isStoring, setIsStoring] = useState(false)
+  const [showQrModal, setShowQrModal] = useState(false)
+  const [qrError, setQrError] = useState<string | null>(null)
+  const [qrSaved, setQrSaved] = useState(false)
+  const qrSvgRef = useRef<{ toDataURL: (cb: (data: string) => void) => void } | null>(null)
 
   useHeader(
     {
@@ -33,15 +56,51 @@ export const PdfViewerScreen: FC<DemoTabScreenProps<"PdfViewer">> = (props) => {
   )
 
   const uriFromParams = route.params?.uri
+  const fileIdFromParams = route.params?.fileId
   const pageFromParams = route.params?.page ?? 1
   const uri = uriFromParams ?? picked?.uri ?? null
-  const page = uriFromParams != null ? pageFromParams : 1
+  const page = uriFromParams != null || fileIdFromParams != null ? pageFromParams : currentPage
 
   const isLocal = useMemo(() => uri != null && uri.startsWith("file://"), [uri])
-  const isRemote = useMemo(
-    () => uri != null && (uri.startsWith("https://") || uri.startsWith("http://")),
-    [uri],
-  )
+
+  // Handle deep link with fileId
+  useEffect(() => {
+    if (fileIdFromParams) {
+      const storedFile = getPdfFile(fileIdFromParams)
+      if (storedFile) {
+        setPicked({ uri: storedFile.uri, name: storedFile.name })
+        setFileId(fileIdFromParams)
+        setBase64(null)
+        setBase64Error(null)
+        // Set page from params if provided
+        if (pageFromParams && pageFromParams > 0) {
+          setCurrentPage(pageFromParams)
+        }
+      } else {
+        setBase64Error(translate("pdfViewerScreen:fileNotFound"))
+      }
+    }
+  }, [fileIdFromParams, pageFromParams])
+
+  // Store file when picked (for QR code generation)
+  useEffect(() => {
+    if (fileIdFromParams || fileId || !uri || !isLocal) return
+
+    const storeFile = async () => {
+      setIsStoring(true)
+      try {
+        const storedFileId = await storePdfFile(uri, picked?.name ?? "document.pdf")
+        setFileId(storedFileId)
+      } catch (e) {
+        // Silently fail - QR generation will handle this
+        console.warn("Failed to store file for QR:", e)
+      } finally {
+        setIsStoring(false)
+      }
+    }
+
+    storeFile()
+  }, [uri, isLocal, picked?.name, fileIdFromParams, fileId])
 
   useEffect(() => {
     if (!isLocal || !uri) return
@@ -82,23 +141,90 @@ export const PdfViewerScreen: FC<DemoTabScreenProps<"PdfViewer">> = (props) => {
     setBase64(null)
     setBase64Error(null)
     setWebViewReady(false)
-    navigation.setParams({ uri: undefined, page: undefined } as object)
+    setFileId(null)
+    setCurrentPage(1)
+    navigation.setParams({ uri: undefined, fileId: undefined, page: undefined } as object)
   }, [navigation])
+
+  const handleWebViewMessage = useCallback((event: { nativeEvent: { data: string } }) => {
+    try {
+      const message = JSON.parse(event.nativeEvent.data)
+      if (message.type === "pageChanged" && typeof message.page === "number") {
+        setCurrentPage(message.page)
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }, [])
+
+  const generateDeepLinkUrl = useCallback(() => {
+    if (!fileId || !currentPage) return null
+    const scheme = "mohamed-anwar"
+    return `${scheme}://Demo/PdfViewer?fileId=${encodeURIComponent(fileId)}&page=${currentPage}`
+  }, [fileId, currentPage])
+
+  const handleGenerateQr = useCallback(() => {
+    if (!fileId || !currentPage) {
+      setQrError(translate("pdfViewerScreen:qrError"))
+      return
+    }
+    setQrError(null)
+    setQrSaved(false)
+    setShowQrModal(true)
+  }, [fileId, currentPage])
+
+  const handleSaveQrToGallery = useCallback(async () => {
+    const svg = qrSvgRef.current
+    if (!svg) {
+      setQrError(translate("pdfViewerScreen:qrError"))
+      return
+    }
+
+    try {
+      const { status } = await MediaLibrary.requestPermissionsAsync()
+      if (status !== "granted") {
+        setQrError(translate("pdfViewerScreen:grantPermissions"))
+        return
+      }
+
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        svg.toDataURL((data: string) => {
+          if (data) resolve(data)
+          else reject(new Error("toDataURL returned empty"))
+        })
+      })
+
+      const base64 = dataUrl.startsWith("data:image/png;base64,")
+        ? dataUrl.replace(/^data:image\/png;base64,/, "")
+        : dataUrl
+
+      const fileUri = `${FileSystem.cacheDirectory}qr-${Date.now()}.png`
+      await FileSystem.writeAsStringAsync(fileUri, base64, { encoding: "base64" })
+
+      await MediaLibrary.createAssetAsync(fileUri)
+      setQrSaved(true)
+      setTimeout(() => {
+        setShowQrModal(false)
+        setQrSaved(false)
+      }, 1500)
+    } catch {
+      setQrError(translate("pdfViewerScreen:qrError"))
+    }
+  }, [])
 
   const html = useMemo(() => {
     if (!uri && !base64) return null
     if (isLocal && !base64 && !base64Error) return null
     if (isLocal && base64Error) return null
     return getPdfViewerHtml({
-      uri: isRemote ? (uri ?? undefined) : undefined,
       base64: isLocal && base64 ? base64 : undefined,
       page,
     })
-  }, [uri, base64, base64Error, isLocal, isRemote, page])
+  }, [uri, base64, base64Error, isLocal, page])
 
   const isLoadingBase64 = isLocal && uri != null && base64 == null && base64Error == null
   const showViewer = html != null && !isLoadingBase64
-  const showEmpty = uri == null && !isLoadingBase64
+  const showEmpty = uri == null && !isLoadingBase64 && !isStoring
 
   if (Platform.OS === "web") {
     return (
@@ -132,6 +258,13 @@ export const PdfViewerScreen: FC<DemoTabScreenProps<"PdfViewer">> = (props) => {
         </View>
       )}
 
+      {isStoring && showViewer && (
+        <View style={themed($storingIndicator)}>
+          <ActivityIndicator size="small" />
+          <Text tx="pdfViewerScreen:storingFile" style={themed($storingText)} />
+        </View>
+      )}
+
       {base64Error != null && !showViewer && (
         <View style={[styles.centered, themed($emptyContainer)]}>
           <Text text={base64Error} style={themed($errorText)} />
@@ -150,11 +283,18 @@ export const PdfViewerScreen: FC<DemoTabScreenProps<"PdfViewer">> = (props) => {
             style={themed($webview)}
             scrollEnabled
             onLoadEnd={() => setWebViewReady(true)}
+            onMessage={handleWebViewMessage}
             originWhitelist={["*"]}
             mixedContentMode="compatibility"
           />
           {webViewReady && (
             <View style={themed($toolbar)}>
+              <Button
+                tx="pdfViewerScreen:generateQr"
+                onPress={handleGenerateQr}
+                disabled={!fileId || isStoring}
+                style={themed($generateQrButton)}
+              />
               <Button
                 tx="pdfViewerScreen:selectAnother"
                 onPress={clearAndPickAnother}
@@ -164,6 +304,52 @@ export const PdfViewerScreen: FC<DemoTabScreenProps<"PdfViewer">> = (props) => {
           )}
         </View>
       )}
+
+      <Modal
+        visible={showQrModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowQrModal(false)}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          style={[styles.modalOverlay, themed($modalOverlay)]}
+          onPress={() => setShowQrModal(false)}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+            <View style={themed($qrModalContent)}>
+              <Text preset="heading" tx="pdfViewerScreen:qrCode" style={themed($qrModalTitle)} />
+              {qrError && <Text text={qrError} style={themed($qrErrorText)} />}
+              {qrSaved && <Text tx="pdfViewerScreen:qrSaved" style={themed($qrSuccessText)} />}
+              {generateDeepLinkUrl() && !qrSaved && (
+                <View style={themed($qrCodeContainer)}>
+                  <QRCode
+                    value={generateDeepLinkUrl() ?? ""}
+                    size={250}
+                    getRef={(c) => {
+                      qrSvgRef.current = c
+                    }}
+                  />
+                </View>
+              )}
+              {!qrSaved && (
+                <View style={themed($qrModalButtons)}>
+                  <Button
+                    tx="pdfViewerScreen:saveToGallery"
+                    onPress={handleSaveQrToGallery}
+                    style={themed($saveQrButton)}
+                  />
+                  <Button
+                    tx="common:cancel"
+                    onPress={() => setShowQrModal(false)}
+                    style={themed($cancelQrButton)}
+                  />
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </Screen>
   )
 }
@@ -174,6 +360,12 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     paddingHorizontal: 24,
+  },
+  modalOverlay: {
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+    padding: 24,
   },
 })
 
@@ -212,4 +404,73 @@ const $errorText: ThemedStyle<TextStyle> = ({ colors }) => ({
   color: colors.error,
   marginBottom: 16,
   textAlign: "center",
+})
+
+const $generateQrButton: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  marginHorizontal: spacing.lg,
+  marginBottom: spacing.md,
+})
+
+const $qrModalContent: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  alignItems: "center",
+  backgroundColor: colors.background,
+  borderRadius: 16,
+  padding: spacing.xl,
+  width: "100%",
+  maxWidth: 400,
+})
+
+const $qrModalTitle: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  marginBottom: spacing.lg,
+})
+
+const $qrCodeContainer: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  alignItems: "center",
+  backgroundColor: "#FFFFFF",
+  borderRadius: 8,
+  justifyContent: "center",
+  marginBottom: spacing.lg,
+  padding: spacing.md,
+})
+
+const $qrModalButtons: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flexDirection: "row",
+  gap: spacing.md,
+  width: "100%",
+})
+
+const $saveQrButton: ThemedStyle<ViewStyle> = () => ({
+  flex: 1,
+})
+
+const $cancelQrButton: ThemedStyle<ViewStyle> = () => ({
+  flex: 1,
+})
+
+const $qrErrorText: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
+  color: colors.error,
+  marginBottom: spacing.md,
+  textAlign: "center",
+})
+
+const $modalOverlay: ThemedStyle<ViewStyle> = ({ colors }) => ({
+  backgroundColor: colors.palette.overlay50,
+})
+
+const $qrSuccessText: ThemedStyle<TextStyle> = ({ colors, spacing: _spacing }) => ({
+  color: colors.text,
+  marginBottom: _spacing.md,
+  textAlign: "center",
+})
+
+const $storingIndicator: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  alignItems: "center",
+  flexDirection: "row",
+  gap: spacing.sm,
+  justifyContent: "center",
+  padding: spacing.sm,
+})
+
+const $storingText: ThemedStyle<TextStyle> = () => ({
+  fontSize: 12,
 })

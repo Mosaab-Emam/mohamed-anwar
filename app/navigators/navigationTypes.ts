@@ -13,7 +13,7 @@ export type DemoTabParamList = {
   DemoShowroom: { queryIndex?: string; itemIndex?: string }
   DemoDebug: undefined
   DemoPodcastList: undefined
-  PdfViewer: { uri?: string; page?: number } | undefined
+  PdfViewer: { uri?: string; fileId?: string; page?: number } | undefined
 }
 
 // App Stack Navigator types
