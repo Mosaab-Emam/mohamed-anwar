@@ -14,6 +14,7 @@ export type DemoTabParamList = {
   DemoDebug: undefined
   DemoPodcastList: undefined
   PdfViewer: { uri?: string; fileId?: string; page?: number } | undefined
+  QrScanner: undefined
 }
 
 // App Stack Navigator types

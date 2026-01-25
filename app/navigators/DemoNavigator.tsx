@@ -10,6 +10,7 @@ import { DemoDebugScreen } from "@/screens/DemoDebugScreen"
 import { DemoPodcastListScreen } from "@/screens/DemoPodcastListScreen"
 import { DemoShowroomScreen } from "@/screens/DemoShowroomScreen/DemoShowroomScreen"
 import { PdfViewerScreen } from "@/screens/PdfViewerScreen"
+import { QrScannerScreen } from "@/screens/QrScannerScreen"
 import { useAppTheme } from "@/theme/context"
 import type { ThemedStyle } from "@/theme/types"
 
@@ -102,6 +103,17 @@ export function DemoNavigator() {
           component={PdfViewerScreen}
           options={{
             tabBarLabel: translate("demoNavigator:pdfTab"),
+            tabBarIcon: ({ focused }) => (
+              <Icon icon="view" color={focused ? colors.tint : colors.tintInactive} size={30} />
+            ),
+          }}
+        />
+
+        <Tab.Screen
+          name="QrScanner"
+          component={QrScannerScreen}
+          options={{
+            tabBarLabel: translate("demoNavigator:qrScannerTab"),
             tabBarIcon: ({ focused }) => (
               <Icon icon="view" color={focused ? colors.tint : colors.tintInactive} size={30} />
             ),

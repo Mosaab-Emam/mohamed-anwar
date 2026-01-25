@@ -61,6 +61,18 @@
         "savePhotosPermission": "Allow $(PRODUCT_NAME) to save QR codes to your photo library."
       }
     ],
+    [
+      "expo-camera",
+      {
+        "cameraPermission": "Allow $(PRODUCT_NAME) to access your camera to scan QR codes."
+      }
+    ],
+    [
+      "expo-image-picker",
+      {
+        "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to select QR code images."
+      }
+    ],
     "expo-build-properties"
   ],
   "experiments": {

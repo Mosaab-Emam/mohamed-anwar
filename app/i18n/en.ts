@@ -49,6 +49,7 @@ const en = {
     communityTab: "Community",
     podcastListTab: "Podcast",
     pdfTab: "PDF",
+    qrScannerTab: "QR Scanner",
   },
   pdfViewerScreen: {
     title: "PDF Viewer",
@@ -64,6 +65,19 @@ const en = {
     fileNotFound: "PDF file not found. It may have been deleted.",
     storingFile: "Storing file…",
     grantPermissions: "Please grant photo library permissions to save QR codes",
+  },
+  qrScannerScreen: {
+    title: "QR Scanner",
+    scanning: "Scanning QR code...",
+    pickImage: "Pick QR Code Image",
+    switchToCamera: "Use Camera",
+    switchToImagePicker: "Pick from Gallery",
+    invalidQrCode: "Invalid QR code. Please scan a valid PDF QR code.",
+    cameraPermissionDenied: "Camera permission is required to scan QR codes.",
+    noFileFound: "PDF file not found. The QR code may be invalid or the file was deleted.",
+    error: "An error occurred while scanning.",
+    webUnsupported: "Camera scanning is not supported on web. Use the image picker instead.",
+    pickImageDescription: "Select a QR code image from your gallery to open a PDF.",
   },
   demoCommunityScreen: {
     title: "Connect with the community",
