@@ -1,0 +1,157 @@
+---
+description: PDF viewer and QR code generation patterns
+globs: "**/PdfViewerScreen.tsx,**/pdfFileStorage.ts,**/pdfViewerHtml.ts"
+alwaysApply: false
+---
+
+# PDF and QR Code Patterns
+
+## File Storage System
+
+All PDF files are stored with stable UUID identifiers (fileId) for QR code deep linking.
+
+### Storage Pattern
+
+```typescript
+// ✅ GOOD: Use pdfFileStorage utilities
+import { storePdfFile, getPdfFile, deletePdfFile } from "@/utils/pdfFileStorage"
+
+// Store a picked PDF
+const fileId = await storePdfFile(sourceUri, originalName)
+
+// Retrieve stored file
+const storedFile = getPdfFile(fileId)
+if (storedFile) {
+  // Use storedFile.uri (file:// path in documentDirectory)
+}
+
+// ❌ BAD: Don't use temporary cache URIs for QR codes
+// Temporary URIs from DocumentPicker are not stable
+```
+
+### Key Points
+
+- **Storage location**: `FileSystem.documentDirectory` (persistent)
+- **File naming**: `{fileId}.pdf` (UUID-based)
+- **Metadata storage**: MMKV with key `pdfFiles:{fileId}`
+- **Storage prefix**: Always use `STORAGE_PREFIX = "pdfFiles:"` constant
+
+## Deep Link Format
+
+QR codes encode deep links to specific PDF pages:
+
+```
+mohamed-anwar://Demo/PdfViewer?fileId={uuid}&page={pageNumber}
+```
+
+### Implementation
+
+```typescript
+// ✅ GOOD: Generate deep link URL
+const generateDeepLinkUrl = () => {
+  if (!fileId || !currentPage) return null
+  const scheme = "mohamed-anwar"
+  return `${scheme}://Demo/PdfViewer?fileId=${encodeURIComponent(fileId)}&page=${currentPage}`
+}
+
+// ✅ GOOD: Handle deep link params
+const fileIdFromParams = route.params?.fileId
+const pageFromParams = route.params?.page ?? 1
+
+if (fileIdFromParams) {
+  const storedFile = getPdfFile(fileIdFromParams)
+  if (storedFile) {
+    // Load PDF from storedFile.uri
+  } else {
+    // Show error: file not found
+  }
+}
+```
+
+## WebView Communication
+
+PDF viewer HTML communicates page changes to React Native via `postMessage`.
+
+### WebView → React Native
+
+```typescript
+// In pdfViewerHtml.ts
+if (window.ReactNativeWebView) {
+  window.ReactNativeWebView.postMessage(JSON.stringify({
+    type: 'pageChanged',
+    page: n,
+    totalPages: numPages
+  }))
+}
+
+// In PdfViewerScreen.tsx
+const handleWebViewMessage = useCallback((event) => {
+  const message = JSON.parse(event.nativeEvent.data)
+  if (message.type === "pageChanged") {
+    setCurrentPage(message.page)
+  }
+}, [])
+
+<WebView onMessage={handleWebViewMessage} />
+```
+
+## QR Code Generation
+
+### Pattern
+
+```typescript
+// ✅ GOOD: Use react-native-qrcode-svg
+import QRCode from "react-native-qrcode-svg"
+
+<QRCode 
+  value={deepLinkUrl} 
+  size={250}
+  getRef={(ref) => qrSvgRef.current = ref}
+/>
+
+// Save to gallery
+const dataUrl = await new Promise<string>((resolve) => {
+  qrSvgRef.current?.toDataURL((data) => resolve(data))
+})
+const base64 = dataUrl.replace(/^data:image\/png;base64,/, "")
+const uri = `${FileSystem.cacheDirectory}qr-${Date.now()}.png`
+await FileSystem.writeAsStringAsync(uri, base64, { encoding: "base64" })
+await MediaLibrary.createAssetAsync(uri)
+```
+
+## Navigation Types
+
+Always include `fileId` and `page` in navigation params:
+
+```typescript
+// ✅ GOOD
+PdfViewer: { 
+  uri?: string;      // Legacy support
+  fileId?: string;   // Preferred for QR codes
+  page?: number;     // 1-based page number
+} | undefined
+```
+
+## Error Handling
+
+```typescript
+// ✅ GOOD: Handle missing files gracefully
+if (!storedFile) {
+  setBase64Error(translate("pdfViewerScreen:fileNotFound"))
+  return
+}
+
+// ✅ GOOD: Request permissions before saving
+const { status } = await MediaLibrary.requestPermissionsAsync()
+if (status !== "granted") {
+  setQrError(translate("pdfViewerScreen:grantPermissions"))
+  return
+}
+```
+
+## Important Constraints
+
+- **Local files only**: No remote URI support. All PDFs must be local files.
+- **Base64 encoding**: Local files must be read as base64 for WebView rendering.
+- **Page tracking**: Always track current page via WebView postMessage for accurate QR codes.
+- **File persistence**: Files in `documentDirectory` persist across app restarts.
