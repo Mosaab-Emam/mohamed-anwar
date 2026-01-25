@@ -9,7 +9,7 @@ import {
 } from "react-native"
 import { CameraView, useCameraPermissions } from "expo-camera"
 import * as ImagePicker from "expo-image-picker"
-import { decode } from "react-native-qr-kit"
+import QRKit from "react-native-qr-kit"
 
 import { Button } from "@/components/Button"
 import { EmptyState } from "@/components/EmptyState"
@@ -108,14 +108,10 @@ export const QrScannerScreen: FC<DemoTabScreenProps<"QrScanner">> = (props) => {
 
       // Decode QR code from image
       try {
-        const decoded = await decode(result.assets[0].uri)
-        // react-native-qr-kit returns an array of decoded strings
-        if (decoded && Array.isArray(decoded) && decoded.length > 0) {
-          const qrData = decoded[0]
-          await handleBarcodeScanned({ data: qrData })
-        } else if (decoded && typeof decoded === "string") {
-          // Handle case where it returns a string directly
-          await handleBarcodeScanned({ data: decoded })
+        const decoded = await QRKit.decodeQR(result.assets[0].uri)
+        // react-native-qr-kit returns { success: true, data: string } or { success: false, message: string }
+        if (decoded && decoded.success === true && decoded.data) {
+          await handleBarcodeScanned({ data: decoded.data })
         } else {
           setError(translate("qrScannerScreen:invalidQrCode"))
           setIsScanning(false)

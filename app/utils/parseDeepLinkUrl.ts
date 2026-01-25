@@ -20,8 +20,9 @@ export function parseDeepLinkUrl(url: string): ParsedDeepLink | null {
       return null
     }
 
-    // Validate path
-    if (parsed.pathname !== "//Demo/PdfViewer") {
+    // Validate path - URL constructor treats "Demo" as hostname, so pathname is "/PdfViewer"
+    // We need to check: hostname === "Demo" AND pathname === "/PdfViewer"
+    if (!(parsed.hostname === "Demo" && parsed.pathname === "/PdfViewer")) {
       return null
     }
 
@@ -44,7 +45,7 @@ export function parseDeepLinkUrl(url: string): ParsedDeepLink | null {
       fileId: decodeURIComponent(fileId),
       page,
     }
-  } catch {
+  } catch (error) {
     // Invalid URL format
     return null
   }
