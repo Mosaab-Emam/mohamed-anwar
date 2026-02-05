@@ -49,6 +49,7 @@ const en = {
     communityTab: "Community",
     podcastListTab: "Podcast",
     pdfTab: "PDF",
+    pdfLinksTab: "PDF Links",
     qrScannerTab: "QR Scanner",
   },
   pdfViewerScreen: {
@@ -57,6 +58,7 @@ const en = {
     selectAnother: "Select another",
     noFileSelected: "No PDF selected. Tap the button below to choose one.",
     webUnsupported: "Use the mobile app to view PDFs.",
+    addLinks: "Add links",
     generateQr: "Generate QR Code",
     qrCode: "QR Code",
     saveToGallery: "Save to Gallery",
@@ -65,6 +67,13 @@ const en = {
     fileNotFound: "PDF file not found. It may have been deleted.",
     storingFile: "Storing file…",
     grantPermissions: "Please grant photo library permissions to save QR codes",
+    chooseDestination: "Choose destination",
+    destinationOption: "{{title}} (Page {{page}})",
+  },
+  pdfLinkEditorScreen: {
+    title: "PDF Link Editor",
+    noFileSelected: "No PDF selected. Tap the button below to choose one to add links to.",
+    selectPdf: "Select PDF",
   },
   qrScannerScreen: {
     title: "QR Scanner",

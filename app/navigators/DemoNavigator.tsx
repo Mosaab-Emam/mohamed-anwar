@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon } from "@/components/Icon"
 import { EpisodeProvider } from "@/context/EpisodeContext"
 import { translate } from "@/i18n/translate"
+import { PdfLinkEditorScreen } from "@/screens/PdfLinkEditorScreen"
 import { PdfViewerScreen } from "@/screens/PdfViewerScreen"
 import { QrScannerScreen } from "@/screens/QrScannerScreen"
 import { useAppTheme } from "@/theme/context"
@@ -16,10 +17,6 @@ const Tab = createBottomTabNavigator<DemoTabParamList>()
 
 /**
  * This is the main navigator for the demo screens with a bottom tab bar.
- * Each tab is a stack navigator with its own set of screens.
- *
- * More info: https://reactnavigation.org/docs/bottom-tab-navigator/
- * @returns {JSX.Element} The rendered `DemoNavigator`.
  */
 export function DemoNavigator() {
   const { bottom } = useSafeAreaInsets()
@@ -47,6 +44,17 @@ export function DemoNavigator() {
           component={PdfViewerScreen}
           options={{
             tabBarLabel: translate("demoNavigator:pdfTab"),
+            tabBarIcon: ({ focused }) => (
+              <Icon icon="view" color={focused ? colors.tint : colors.tintInactive} size={30} />
+            ),
+          }}
+        />
+
+        <Tab.Screen
+          name="PdfLinkEditor"
+          component={PdfLinkEditorScreen}
+          options={{
+            tabBarLabel: translate("demoNavigator:pdfLinksTab"),
             tabBarIcon: ({ focused }) => (
               <Icon icon="view" color={focused ? colors.tint : colors.tintInactive} size={30} />
             ),

@@ -94,7 +94,7 @@ export const QrScannerScreen: FC<DemoTabScreenProps<"QrScanner">> = (props) => {
 
       // Pick image
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.images,
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
         quality: 1,
       })

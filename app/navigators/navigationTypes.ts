@@ -14,6 +14,7 @@ export type DemoTabParamList = {
   DemoDebug: undefined
   DemoPodcastList: undefined
   PdfViewer: { uri?: string; fileId?: string; page?: number } | undefined
+  PdfLinkEditor: { fileId?: string } | undefined
   QrScanner: undefined
 }
 

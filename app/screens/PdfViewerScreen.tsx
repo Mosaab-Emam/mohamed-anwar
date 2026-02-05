@@ -1,6 +1,8 @@
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useFocusEffect } from "@react-navigation/native"
 import {
   ActivityIndicator,
+  FlatList,
   Modal,
   Platform,
   StyleSheet,
@@ -25,6 +27,8 @@ import { useAppTheme } from "@/theme/context"
 import { $styles } from "@/theme/styles"
 import type { ThemedStyle } from "@/theme/types"
 import { getPdfFile, storePdfFile } from "@/utils/pdfFileStorage"
+import type { PdfLink, PdfLinkDestination } from "@/utils/pdfLinkStorage"
+import { getPdfLinks } from "@/utils/pdfLinkStorage"
 import { getPdfViewerHtml } from "@/utils/pdfViewerHtml"
 import { useHeader } from "@/utils/useHeader"
 
@@ -47,6 +51,20 @@ export const PdfViewerScreen: FC<DemoTabScreenProps<"PdfViewer">> = (props) => {
   const [qrError, setQrError] = useState<string | null>(null)
   const [qrSaved, setQrSaved] = useState(false)
   const qrSvgRef = useRef<{ toDataURL: (cb: (data: string) => void) => void } | null>(null)
+  const webViewRef = useRef<WebView>(null)
+  const [linksRefreshKey, setLinksRefreshKey] = useState(0)
+  const [destinationModalVisible, setDestinationModalVisible] = useState(false)
+  const [destinationChoices, setDestinationChoices] = useState<PdfLinkDestination[] | null>(null)
+  const pdfLinks = useMemo(
+    () => (fileId ? getPdfLinks(fileId) ?? [] : []),
+    [fileId, linksRefreshKey],
+  )
+
+  useFocusEffect(
+    useCallback(() => {
+      setLinksRefreshKey((k) => k + 1)
+    }, [fileId]),
+  )
 
   useHeader(
     {
@@ -152,10 +170,25 @@ export const PdfViewerScreen: FC<DemoTabScreenProps<"PdfViewer">> = (props) => {
       if (message.type === "pageChanged" && typeof message.page === "number") {
         setCurrentPage(message.page)
       }
+      if (message.type === "linkClicked" && Array.isArray(message.destinations) && message.destinations.length > 0) {
+        setDestinationChoices(message.destinations as PdfLinkDestination[])
+        setDestinationModalVisible(true)
+      }
     } catch {
       // Ignore parse errors
     }
   }, [])
+
+  const closeDestinationModal = useCallback(() => {
+    setDestinationModalVisible(false)
+    setDestinationChoices(null)
+  }, [])
+
+  const selectDestination = useCallback((d: PdfLinkDestination) => {
+    setCurrentPage(d.page)
+    webViewRef.current?.injectJavaScript(`window.goToPage(${d.page}); true;`)
+    closeDestinationModal()
+  }, [closeDestinationModal])
 
   const generateDeepLinkUrl = useCallback(() => {
     if (!fileId || !currentPage) return null
@@ -219,8 +252,9 @@ export const PdfViewerScreen: FC<DemoTabScreenProps<"PdfViewer">> = (props) => {
     return getPdfViewerHtml({
       base64: isLocal && base64 ? base64 : undefined,
       page,
+      links: pdfLinks.length > 0 ? pdfLinks : undefined,
     })
-  }, [uri, base64, base64Error, isLocal, page])
+  }, [uri, base64, base64Error, isLocal, page, pdfLinks])
 
   const isLoadingBase64 = isLocal && uri != null && base64 == null && base64Error == null
   const showViewer = html != null && !isLoadingBase64
@@ -279,6 +313,8 @@ export const PdfViewerScreen: FC<DemoTabScreenProps<"PdfViewer">> = (props) => {
       {showViewer && html != null && (
         <View style={$styles.flex1}>
           <WebView
+            key={`pdf-${fileId ?? ""}-${page}-${pdfLinks.length}-${linksRefreshKey}`}
+            ref={webViewRef}
             source={{ html }}
             style={themed($webview)}
             scrollEnabled
@@ -289,6 +325,14 @@ export const PdfViewerScreen: FC<DemoTabScreenProps<"PdfViewer">> = (props) => {
           />
           {webViewReady && (
             <View style={themed($toolbar)}>
+              <Button
+                tx="pdfViewerScreen:addLinks"
+                onPress={() =>
+                  navigation.navigate("PdfLinkEditor", { fileId: fileId ?? undefined })
+                }
+                disabled={!fileId || isStoring}
+                style={themed($generateQrButton)}
+              />
               <Button
                 tx="pdfViewerScreen:generateQr"
                 onPress={handleGenerateQr}
@@ -304,6 +348,44 @@ export const PdfViewerScreen: FC<DemoTabScreenProps<"PdfViewer">> = (props) => {
           )}
         </View>
       )}
+
+      <Modal
+        visible={destinationModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeDestinationModal}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          style={[styles.modalOverlay, themed($modalOverlay)]}
+          onPress={closeDestinationModal}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+            <View style={themed($destinationModalContent)}>
+              <Text preset="heading" tx="pdfViewerScreen:chooseDestination" style={themed($destinationModalTitle)} />
+              <FlatList
+                data={destinationChoices ?? []}
+                keyExtractor={(item, index) => `${item.page}-${item.title}-${index}`}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={themed($destinationItem)}
+                    onPress={() => selectDestination(item)}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      text={translate("pdfViewerScreen:destinationOption", { title: item.title, page: item.page })}
+                      preset="default"
+                      style={themed($destinationItemText)}
+                    />
+                  </TouchableOpacity>
+                )}
+                style={themed($destinationList)}
+              />
+              <Button tx="common:cancel" onPress={closeDestinationModal} style={themed($cancelQrButton)} />
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       <Modal
         visible={showQrModal}
@@ -423,6 +505,37 @@ const $qrModalContent: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
 
 const $qrModalTitle: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   marginBottom: spacing.lg,
+})
+
+const $destinationModalContent: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  alignItems: "stretch",
+  backgroundColor: colors.background,
+  borderRadius: 16,
+  padding: spacing.xl,
+  width: "100%",
+  maxWidth: 400,
+  maxHeight: "90%",
+})
+
+const $destinationModalTitle: ThemedStyle<TextStyle> = ({ spacing }) => ({
+  marginBottom: spacing.md,
+})
+
+const $destinationList: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  minHeight: 440,
+  maxHeight: 520,
+  marginBottom: spacing.md,
+})
+
+const $destinationItem: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  paddingVertical: spacing.md,
+  paddingHorizontal: spacing.sm,
+  borderBottomWidth: StyleSheet.hairlineWidth,
+  borderBottomColor: colors.palette.neutral400,
+})
+
+const $destinationItemText: ThemedStyle<TextStyle> = ({ colors }) => ({
+  color: colors.text,
 })
 
 const $qrCodeContainer: ThemedStyle<ViewStyle> = ({ spacing }) => ({

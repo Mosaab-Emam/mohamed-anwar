@@ -1,3 +1,5 @@
+import type { PdfLink } from "./pdfLinkStorage"
+
 /**
  * Generates HTML for the in-app PDF viewer using pdf.js.
  * Supports both remote (https) and local (base64) sources, and opening at a specific page.
@@ -13,13 +15,16 @@ export interface PdfViewerHtmlOptions {
   base64?: string
   /** 1-based page number to open at. */
   page: number
+  /** Optional link areas for this PDF; overlays shown on the current page. */
+  links?: PdfLink[]
 }
 
 export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
-  const { uri, base64, page } = options
+  const { uri, base64, page, links } = options
   const uriJson = uri != null ? JSON.stringify(uri) : "null"
   const base64Json = base64 != null ? JSON.stringify(base64) : "null"
   const pageNum = Math.max(1, Math.floor(page))
+  const linksJson = JSON.stringify(links ?? [])
 
   return `<!DOCTYPE html>
 <html>
@@ -33,7 +38,10 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
     .navBtn { background: #444; color: #eee; border: none; padding: 6px 12px; font-size: 14px; border-radius: 6px; cursor: pointer; }
     .navBtn:disabled { opacity: 0.4; cursor: not-allowed; }
     #container { flex: 1; width: 100%; min-height: 200px; overflow: auto; padding: 52px 8px 16px; }
-    canvas { display: block; margin: 0 auto 16px; background: #fff; }
+    .pageWrap { position: relative; display: inline-block; margin: 0 auto 16px; }
+    .pageWrap canvas { display: block; background: #fff; margin: 0; }
+    .linkOverlay { position: absolute; cursor: pointer; pointer-events: auto; left: 0; top: 0; background: rgba(100, 150, 255, 0.2); border: 1px solid rgba(100, 150, 255, 0.6); }
+    .linkOverlay:hover { background: rgba(100, 150, 255, 0.35); }
     #error { color: #e74c3c; padding: 16px; font-family: system-ui, sans-serif; }
   </style>
 </head>
@@ -51,6 +59,7 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
       var PDF_URI = ${uriJson};
       var PDF_BASE64 = ${base64Json};
       var PDF_PAGE = ${pageNum};
+      var PDF_LINKS = ${linksJson};
 
       var pdfDoc = null;
       var numPages = 0;
@@ -80,6 +89,7 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
           }));
         }
         container.innerHTML = '';
+        var pageLinks = Array.isArray(PDF_LINKS) ? PDF_LINKS.filter(function(l) { return l.page === n; }) : [];
         pdfDoc.getPage(n).then(function(p) {
           var v1 = p.getViewport(1);
           var winW = window.innerWidth || 300;
@@ -95,7 +105,37 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
           }
           canvas.height = viewport.height;
           canvas.width = viewport.width;
-          container.appendChild(canvas);
+          var wrap = document.createElement('div');
+          wrap.className = 'pageWrap';
+          wrap.style.width = viewport.width + 'px';
+          wrap.style.height = viewport.height + 'px';
+          wrap.appendChild(canvas);
+          container.appendChild(wrap);
+          for (var i = 0; i < pageLinks.length; i++) {
+            var link = pageLinks[i];
+            var r = link.rect || {};
+            var div = document.createElement('div');
+            div.className = 'linkOverlay';
+            div.style.left = (r.x * 100) + '%';
+            div.style.top = (r.y * 100) + '%';
+            div.style.width = (r.width * 100) + '%';
+            div.style.height = (r.height * 100) + '%';
+            div.dataset.linkId = link.id;
+            div.addEventListener('click', function(ev) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              var id = this.dataset.linkId;
+              var l = pageLinks.find(function(x) { return x.id === id; });
+              if (l && l.destinations && l.destinations.length && window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  type: 'linkClicked',
+                  linkId: id,
+                  destinations: l.destinations
+                }));
+              }
+            });
+            wrap.appendChild(div);
+          }
           void canvas.offsetHeight;
           var task = p.render({ canvasContext: ctx, viewport: viewport });
           var prom = task && task.promise ? task.promise : Promise.resolve();

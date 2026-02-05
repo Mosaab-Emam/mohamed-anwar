@@ -58,6 +58,8 @@ const config = {
             page: (page: string) => parseInt(page, 10) || 1,
           },
         },
+        PdfLinkEditor: "pdf/links",
+        QrScanner: "qr",
       },
     },
   },
