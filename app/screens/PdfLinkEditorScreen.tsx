@@ -222,7 +222,7 @@ export const PdfLinkEditorScreen: FC<DemoTabScreenProps<"PdfLinkEditor">> = (pro
       {isLoadingBase64 && (
         <View style={[themed($centered), themed($emptyContainer)]}>
           <ActivityIndicator size="large" />
-          <Text text="Loading PDF…" style={themed($loadingText)} />
+          <Text tx="common:loadingPdf" style={themed($loadingText)} />
         </View>
       )}
 

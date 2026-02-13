@@ -27,12 +27,12 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
   const linksJson = JSON.stringify(links ?? [])
 
   return `<!DOCTYPE html>
-<html>
+<html lang="ar" dir="rtl">
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #1a1a1a; height: 100vh; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
+    body { direction: rtl; background: #1a1a1a; height: 100vh; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
     #toolbar { position: fixed; top: 0; left: 0; right: 0; height: 44px; background: #2d2d2d; display: flex; align-items: center; justify-content: center; gap: 12px; z-index: 10; }
     #pageInfo { color: #eee; font-family: system-ui, sans-serif; font-size: 14px; }
     .navBtn { background: #444; color: #eee; border: none; padding: 6px 12px; font-size: 14px; border-radius: 6px; cursor: pointer; }
@@ -47,9 +47,9 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
 </head>
 <body>
   <div id="toolbar">
-    <button type="button" class="navBtn" id="prevBtn" aria-label="Previous page">Prev</button>
+    <button type="button" class="navBtn" id="prevBtn" aria-label="الصفحة السابقة">السابق</button>
     <span id="pageInfo">—</span>
-    <button type="button" class="navBtn" id="nextBtn" aria-label="Next page">Next</button>
+    <button type="button" class="navBtn" id="nextBtn" aria-label="الصفحة التالية">التالي</button>
   </div>
   <div id="container"></div>
   <div id="error"></div>
@@ -69,13 +69,13 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
       var errEl = document.getElementById('error');
 
       function showErr(msg) {
-        errEl.textContent = msg || 'Failed to load PDF';
+        errEl.textContent = msg || 'فشل تحميل ملف PDF';
       }
 
       function renderPage(n) {
         if (!pdfDoc || n < 1 || n > numPages) return;
         currentPage = n;
-        pageInfo.textContent = 'Page ' + n + ' of ' + numPages;
+        pageInfo.textContent = 'الصفحة ' + n + ' من ' + numPages;
         var prevBtn = document.getElementById('prevBtn');
         var nextBtn = document.getElementById('nextBtn');
         if (prevBtn) { prevBtn.disabled = n <= 1; }
@@ -100,7 +100,7 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
           var canvas = document.createElement('canvas');
           var ctx = canvas.getContext('2d');
           if (!ctx) {
-            showErr('Canvas 2D context not available');
+            showErr('Canvas 2D غير متوفر');
             return;
           }
           canvas.height = viewport.height;
@@ -140,10 +140,10 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
           var task = p.render({ canvasContext: ctx, viewport: viewport });
           var prom = task && task.promise ? task.promise : Promise.resolve();
           prom.catch(function(e) {
-            showErr('Render error: ' + (e && e.message ? e.message : String(e)));
+            showErr('خطأ في عرض الصفحة: ' + (e && e.message ? e.message : String(e)));
           });
         }).catch(function(e) {
-          showErr('Render error: ' + (e.message || e));
+          showErr('خطأ في عرض الصفحة: ' + (e.message || e));
         });
       }
 
@@ -158,7 +158,7 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
       document.getElementById('nextBtn').addEventListener('click', window.nextPage);
 
       if (typeof pdfjsLib === 'undefined') {
-        showErr('pdf.js failed to load');
+        showErr('تعذر تحميل pdf.js');
         return;
       }
       try {
@@ -172,7 +172,7 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
           : null;
 
       if (!loadingTask) {
-        showErr('No PDF source (uri or base64)');
+        showErr('لم يتم العثور على مصدر PDF');
         return;
       }
 
@@ -182,7 +182,7 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
         var p = Math.max(1, Math.min(PDF_PAGE, numPages));
         renderPage(p);
       }).catch(function(e) {
-        showErr('Load error: ' + (e.message || e));
+        showErr('خطأ في تحميل الملف: ' + (e.message || e));
       });
     })();
   </script>

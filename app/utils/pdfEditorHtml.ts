@@ -18,12 +18,12 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
   const linksJson = JSON.stringify(links)
 
   return `<!DOCTYPE html>
-<html>
+<html lang="ar" dir="rtl">
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #1a1a1a; height: 100vh; min-height: 100vh; display: flex; flex-direction: column; align-items: center; font-family: system-ui, sans-serif; }
+    body { direction: rtl; background: #1a1a1a; height: 100vh; min-height: 100vh; display: flex; flex-direction: column; align-items: center; font-family: system-ui, sans-serif; }
     #toolbar { position: fixed; top: 0; left: 0; right: 0; min-height: 88px; background: #2d2d2d; display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; z-index: 10; }
     #toolbar.has-results { min-height: 124px; }
     .toolbarRow { display: flex; align-items: center; justify-content: center; gap: 12px; }
@@ -66,36 +66,36 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
 <body>
   <div id="toolbar">
     <div class="toolbarRow">
-      <button type="button" class="navBtn" id="prevBtn">Prev</button>
+      <button type="button" class="navBtn" id="prevBtn">السابق</button>
       <span id="pageInfo">—</span>
-      <button type="button" class="navBtn" id="nextBtn">Next</button>
-      <button type="button" class="navBtn" id="addLinkBtn">Add link</button>
+      <button type="button" class="navBtn" id="nextBtn">التالي</button>
+      <button type="button" class="navBtn" id="addLinkBtn">إضافة رابط</button>
     </div>
     <div class="toolbarRow">
-      <input type="text" id="searchInput" placeholder="Search..." />
-      <button type="button" class="navBtn" id="searchBtn">Search</button>
+      <input type="text" id="searchInput" placeholder="ابحث..." />
+      <button type="button" class="navBtn" id="searchBtn">بحث</button>
       <span id="searchInfo">—</span>
     </div>
     <div class="resultsRow" id="resultsRow">
       <span id="resultsText"></span>
-      <button type="button" class="navBtn" id="linkAllBtn">Link All Matches</button>
+      <button type="button" class="navBtn" id="linkAllBtn">ربط جميع النتائج</button>
     </div>
   </div>
   <div id="container"></div>
   <div id="error"></div>
   <div id="formPanel">
-    <h3 id="formTitle">New link</h3>
+    <h3 id="formTitle">رابط جديد</h3>
     <div id="destList"></div>
-    <button type="button" class="formBtn secondary" id="addDestBtn">Add destination</button>
-    <button type="button" class="formBtn primary" id="saveLinkBtn">Save link</button>
-    <button type="button" class="formBtn secondary" id="cancelFormBtn">Cancel</button>
+    <button type="button" class="formBtn secondary" id="addDestBtn">إضافة وجهة</button>
+    <button type="button" class="formBtn primary" id="saveLinkBtn">حفظ الرابط</button>
+    <button type="button" class="formBtn secondary" id="cancelFormBtn">إلغاء</button>
   </div>
   <div id="bulkOverlay"></div>
   <div id="bulkResultPanel">
-    <h3 id="bulkResultTitle">Links Created</h3>
+    <h3 id="bulkResultTitle">تم إنشاء الروابط</h3>
     <p id="bulkResultSummary"></p>
     <div class="pages" id="bulkResultPages"></div>
-    <button type="button" class="formBtn primary" id="bulkResultOkBtn">OK</button>
+    <button type="button" class="formBtn primary" id="bulkResultOkBtn">حسنًا</button>
   </div>
   <script src="${PDF_JS_URL}"><\/script>
   <script>
@@ -139,7 +139,7 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
       function renderPage(n) {
         if (!pdfDoc || n < 1 || n > numPages) return;
         currentPage = n;
-        pageInfo.textContent = 'Page ' + n + ' of ' + numPages;
+        pageInfo.textContent = 'الصفحة ' + n + ' من ' + numPages;
         document.getElementById('prevBtn').disabled = n <= 1;
         document.getElementById('nextBtn').disabled = n >= numPages;
         container.innerHTML = '';
@@ -155,7 +155,7 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
           canvasH = viewport.height;
           var canvas = document.createElement('canvas');
           var ctx = canvas.getContext('2d');
-          if (!ctx) { showErr('Canvas 2D not available'); return; }
+          if (!ctx) { showErr('Canvas 2D غير متوفر'); return; }
           canvas.height = viewport.height;
           canvas.width = viewport.width;
           wrapEl = document.createElement('div');
@@ -177,9 +177,9 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
           void canvas.offsetHeight;
           var task = p.render({ canvasContext: ctx, viewport: viewport });
           var prom = task && task.promise ? task.promise : Promise.resolve();
-          prom.catch(function(e) { showErr('Render: ' + (e && e.message ? e.message : String(e))); });
+          prom.catch(function(e) { showErr('خطأ في العرض: ' + (e && e.message ? e.message : String(e))); });
           setupDraw();
-        }).catch(function(e) { showErr('Load: ' + (e.message || e)); });
+        }).catch(function(e) { showErr('خطأ في التحميل: ' + (e.message || e)); });
       }
 
       function setupDraw() {
@@ -262,7 +262,7 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
       function showForm() {
         draftDestinations = [{ title: '', page: currentPage }];
         renderDestList();
-        formTitle.textContent = 'New link (Page ' + currentPage + ')';
+        formTitle.textContent = 'رابط جديد (صفحة ' + currentPage + ')';
         formPanel.classList.add('visible');
       }
 
@@ -271,8 +271,8 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
         draftDestinations.forEach(function(d, i) {
           var row = document.createElement('div');
           row.className = 'destRow';
-          row.innerHTML = '<input type="text" placeholder="Title" data-idx="' + i + '" data-field="title" value="' + (d.title || '').replace(/"/g, '&quot;') + '">' +
-            '<input type="number" min="1" placeholder="Page" data-idx="' + i + '" data-field="page" value="' + (d.page || 1) + '">';
+          row.innerHTML = '<input type="text" placeholder="العنوان" data-idx="' + i + '" data-field="title" value="' + (d.title || '').replace(/"/g, '&quot;') + '">' +
+            '<input type="number" min="1" placeholder="الصفحة" data-idx="' + i + '" data-field="page" value="' + (d.page || 1) + '">';
           destList.appendChild(row);
         });
         destList.querySelectorAll('input').forEach(function(inp) {
@@ -307,21 +307,21 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
       document.getElementById('prevBtn').onclick = function() { if (currentPage > 1) { renderPage(currentPage - 1); notifyPage(currentPage - 1); } };
       document.getElementById('nextBtn').onclick = function() { if (currentPage < numPages) { renderPage(currentPage + 1); notifyPage(currentPage + 1); } };
 
-      if (typeof pdfjsLib === 'undefined') { showErr('pdf.js failed to load'); return; }
+      if (typeof pdfjsLib === 'undefined') { showErr('تعذر تحميل pdf.js'); return; }
       try { pdfjsLib.GlobalWorkerOptions.workerSrc = ${JSON.stringify(PDF_WORKER_URL)}; } catch (e) {}
       var loadingTask = PDF_BASE64
         ? pdfjsLib.getDocument({ data: atob(PDF_BASE64), disableWorker: true })
         : PDF_URI
           ? pdfjsLib.getDocument({ url: PDF_URI, disableWorker: true })
           : null;
-      if (!loadingTask) { showErr('No PDF source'); return; }
+      if (!loadingTask) { showErr('لم يتم العثور على مصدر PDF'); return; }
       loadingTask.promise.then(function(doc) {
         pdfDoc = doc;
         numPages = doc.numPages;
         var p = Math.max(1, Math.min(PDF_PAGE, numPages));
         renderPage(p);
         notifyPage(p);
-      }).catch(function(e) { showErr('Load: ' + (e.message || e)); });
+      }).catch(function(e) { showErr('خطأ في التحميل: ' + (e.message || e)); });
 
       window.editorGoToPage = function(n) {
         var p = Math.max(1, Math.min(Math.floor(n), numPages));
@@ -341,22 +341,22 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
         var hasResults = bulkMatchRects.length > 0;
         
         if (searchInProgress) {
-          searchInfo.textContent = 'Searching...';
+          searchInfo.textContent = 'جارٍ البحث...';
           if (resultsRow) resultsRow.classList.remove('visible');
           if (toolbar) toolbar.classList.remove('has-results');
           if (containerEl) containerEl.classList.remove('has-results');
         } else if (hasResults) {
           var matchCount = bulkMatchRects.length;
           var pageCount = searchResults.length;
-          searchInfo.textContent = matchCount + ' found';
+          searchInfo.textContent = matchCount + ' نتيجة';
           if (resultsText) {
-            resultsText.textContent = matchCount + ' match' + (matchCount !== 1 ? 'es' : '') + ' on ' + pageCount + ' page' + (pageCount !== 1 ? 's' : '');
+            resultsText.textContent = matchCount + ' نتيجة على ' + pageCount + ' صفحة';
           }
           if (resultsRow) resultsRow.classList.add('visible');
           if (toolbar) toolbar.classList.add('has-results');
           if (containerEl) containerEl.classList.add('has-results');
         } else if (searchQuery) {
-          searchInfo.textContent = 'No matches';
+          searchInfo.textContent = 'لا توجد نتائج';
           if (resultsRow) resultsRow.classList.remove('visible');
           if (toolbar) toolbar.classList.remove('has-results');
           if (containerEl) containerEl.classList.remove('has-results');
@@ -449,7 +449,7 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
             }
           }
         } catch (e) {
-          showErr('Search error: ' + (e.message || e));
+          showErr('خطأ أثناء البحث: ' + (e.message || e));
         } finally {
           searchInProgress = false;
           updateSearchInfo();
@@ -480,7 +480,7 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
         bulkLinkMode = true;
         draftDestinations = [{ title: '', page: currentPage }];
         renderDestList();
-        formTitle.textContent = 'Link ' + bulkMatchRects.length + ' matches of "' + searchQuery + '"';
+        formTitle.textContent = 'ربط ' + bulkMatchRects.length + ' نتيجة لعبارة "' + searchQuery + '"';
         formPanel.classList.add('visible');
       }
 
@@ -488,11 +488,11 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
         var summaryEl = document.getElementById('bulkResultSummary');
         var pagesEl = document.getElementById('bulkResultPages');
         if (summaryEl) {
-          summaryEl.textContent = linkCount + ' link' + (linkCount !== 1 ? 's' : '') + ' created successfully!';
+          summaryEl.textContent = 'تم إنشاء ' + linkCount + ' رابط بنجاح';
         }
         if (pagesEl) {
           var uniquePages = pages.filter(function(p, i, arr) { return arr.indexOf(p) === i; }).sort(function(a, b) { return a - b; });
-          pagesEl.textContent = 'Pages: ' + uniquePages.join(', ');
+          pagesEl.textContent = 'الصفحات: ' + uniquePages.join(', ');
         }
         if (bulkOverlay) bulkOverlay.classList.add('visible');
         if (bulkResultPanel) bulkResultPanel.classList.add('visible');
@@ -531,7 +531,7 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
       document.getElementById('saveLinkBtn').onclick = function() {
         syncDraft();
         var valid = draftDestinations.filter(function(d) { return (d.title || '').trim(); });
-        if (valid.length === 0) { alert('Add at least one destination with a title'); return; }
+        if (valid.length === 0) { alert('أضف وجهة واحدة على الأقل مع عنوان'); return; }
 
         if (bulkLinkMode && bulkMatchRects.length > 0) {
           // Bulk save mode - save all matches in a single message

@@ -7,6 +7,7 @@ const ar: Translations = {
     cancel: "حذف",
     back: "خلف",
     logOut: "تسجيل خروج",
+    loadingPdf: "جارٍ تحميل ملف PDF...",
   },
   welcomeScreen: {
     postscript:

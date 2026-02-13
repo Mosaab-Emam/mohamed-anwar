@@ -288,7 +288,7 @@ export const PdfViewerScreen: FC<DemoTabScreenProps<"PdfViewer">> = (props) => {
       {isLoadingBase64 && (
         <View style={[styles.centered, themed($emptyContainer)]}>
           <ActivityIndicator size="large" />
-          <Text text="Loading PDF…" style={themed($loadingText)} />
+          <Text tx="common:loadingPdf" style={themed($loadingText)} />
         </View>
       )}
 
