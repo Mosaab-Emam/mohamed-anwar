@@ -39,11 +39,8 @@ export const NAVIGATION_PERSISTENCE_KEY = "NAVIGATION_STATE"
 const prefix = Linking.createURL("/")
 const config = {
   screens: {
-    Login: {
-      path: "",
-    },
-    Welcome: "welcome",
     Demo: {
+      path: "",
       screens: {
         DemoShowroom: {
           path: "showroom/:queryIndex?/:itemIndex?",
@@ -62,6 +59,8 @@ const config = {
         QrScanner: "qr",
       },
     },
+    Login: "login",
+    Welcome: "welcome",
   },
 }
 

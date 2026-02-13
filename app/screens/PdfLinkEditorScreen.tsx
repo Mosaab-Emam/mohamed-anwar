@@ -265,10 +265,11 @@ const $centerText: ThemedStyle<ViewStyle> = () => ({
   padding: 24,
 })
 
-const $centered: ThemedStyle<ViewStyle> = () => ({
+const $centered: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   flex: 1,
   justifyContent: "center",
   alignItems: "center",
+  paddingHorizontal: spacing.lg,
 })
 
 const $emptyContainer: ThemedStyle<ViewStyle> = ({ spacing }) => ({
