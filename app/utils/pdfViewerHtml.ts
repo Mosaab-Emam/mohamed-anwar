@@ -34,7 +34,8 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { direction: rtl; background: #1a1a1a; height: 100vh; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
     #toolbar { position: fixed; top: 0; left: 0; right: 0; height: 44px; background: #2d2d2d; display: flex; align-items: center; justify-content: center; gap: 12px; z-index: 10; }
-    #pageInfo { color: #eee; font-family: system-ui, sans-serif; font-size: 14px; }
+    #pageInfo { color: #eee; font-family: system-ui, sans-serif; font-size: 14px; display: flex; align-items: center; gap: 6px; }
+    #pageInput { width: 48px; padding: 4px 8px; font-size: 14px; text-align: center; border-radius: 6px; border: 1px solid #555; background: #1a1a1a; color: #eee; }
     .navBtn { background: #444; color: #eee; border: none; padding: 6px 12px; font-size: 14px; border-radius: 6px; cursor: pointer; }
     .navBtn:disabled { opacity: 0.4; cursor: not-allowed; }
     #container { flex: 1; width: 100%; min-height: 200px; overflow: auto; padding: 52px 8px 16px; }
@@ -48,7 +49,10 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
 <body>
   <div id="toolbar">
     <button type="button" class="navBtn" id="prevBtn" aria-label="الصفحة السابقة">السابق</button>
-    <span id="pageInfo">—</span>
+    <span id="pageInfo">
+      <input type="number" id="pageInput" min="1" value="1" aria-label="رقم الصفحة" />
+      <span id="pageTotal">—</span>
+    </span>
     <button type="button" class="navBtn" id="nextBtn" aria-label="الصفحة التالية">التالي</button>
   </div>
   <div id="container"></div>
@@ -66,6 +70,8 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
       var currentPage = PDF_PAGE;
       var container = document.getElementById('container');
       var pageInfo = document.getElementById('pageInfo');
+      var pageInput = document.getElementById('pageInput');
+      var pageTotal = document.getElementById('pageTotal');
       var errEl = document.getElementById('error');
 
       function showErr(msg) {
@@ -75,7 +81,11 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
       function renderPage(n) {
         if (!pdfDoc || n < 1 || n > numPages) return;
         currentPage = n;
-        pageInfo.textContent = 'الصفحة ' + n + ' من ' + numPages;
+        pageTotal.textContent = 'من ' + numPages;
+        if (pageInput) {
+          pageInput.value = String(n);
+          pageInput.max = numPages;
+        }
         var prevBtn = document.getElementById('prevBtn');
         var nextBtn = document.getElementById('nextBtn');
         if (prevBtn) { prevBtn.disabled = n <= 1; }
@@ -156,6 +166,22 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
 
       document.getElementById('prevBtn').addEventListener('click', window.prevPage);
       document.getElementById('nextBtn').addEventListener('click', window.nextPage);
+
+      if (pageInput) {
+        pageInput.addEventListener('change', function() {
+          var p = parseInt(this.value, 10);
+          if (!isNaN(p) && p >= 1 && p <= numPages) window.goToPage(p);
+          else this.value = String(currentPage);
+        });
+        pageInput.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') {
+            var p = parseInt(this.value, 10);
+            if (!isNaN(p) && p >= 1 && p <= numPages) window.goToPage(p);
+            else this.value = String(currentPage);
+            e.preventDefault();
+          }
+        });
+      }
 
       if (typeof pdfjsLib === 'undefined') {
         showErr('تعذر تحميل pdf.js');
