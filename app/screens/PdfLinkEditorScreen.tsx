@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/EmptyState"
 import { Screen } from "@/components/Screen"
 import { Text } from "@/components/Text"
 import { translate } from "@/i18n/translate"
-import { DemoTabScreenProps } from "@/navigators/navigationTypes"
+import { PdfStackScreenProps } from "@/navigators/navigationTypes"
 import { useAppTheme } from "@/theme/context"
 import { $styles } from "@/theme/styles"
 import type { ThemedStyle } from "@/theme/types"
@@ -26,8 +26,8 @@ import { useHeader } from "@/utils/useHeader"
 
 type PickedFile = { uri: string; name: string }
 
-export const PdfLinkEditorScreen: FC<DemoTabScreenProps<"PdfLinkEditor">> = (props) => {
-  const { route } = props
+export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (props) => {
+  const { route, navigation } = props
   const { themed } = useAppTheme()
   const [picked, setPicked] = useState<PickedFile | null>(null)
   const [base64, setBase64] = useState<string | null>(null)
@@ -42,8 +42,10 @@ export const PdfLinkEditorScreen: FC<DemoTabScreenProps<"PdfLinkEditor">> = (pro
   useHeader(
     {
       titleTx: "pdfLinkEditorScreen:title",
+      leftTx: "common:back",
+      onLeftPress: () => navigation.goBack(),
     },
-    [],
+    [navigation],
   )
 
   const fileIdFromParams = route.params?.fileId

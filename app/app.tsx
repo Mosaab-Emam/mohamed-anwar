@@ -54,8 +54,11 @@ const config = {
             fileId: (fileId: string) => decodeURIComponent(fileId),
             page: (page: string) => parseInt(page, 10) || 1,
           },
+          screens: {
+            PdfViewer: "",
+            PdfLinkEditor: "links",
+          },
         },
-        PdfLinkEditor: "pdf/links",
         QrScanner: "qr",
       },
     },

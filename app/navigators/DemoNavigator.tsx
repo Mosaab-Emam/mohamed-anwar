@@ -5,8 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Icon } from "@/components/Icon"
 import { EpisodeProvider } from "@/context/EpisodeContext"
 import { translate } from "@/i18n/translate"
-import { PdfLinkEditorScreen } from "@/screens/PdfLinkEditorScreen"
-import { PdfViewerScreen } from "@/screens/PdfViewerScreen"
+import { PdfStackNavigator } from "@/navigators/PdfStackNavigator"
 import { QrScannerScreen } from "@/screens/QrScannerScreen"
 import { useAppTheme } from "@/theme/context"
 import type { ThemedStyle } from "@/theme/types"
@@ -41,20 +40,9 @@ export function DemoNavigator() {
       >
         <Tab.Screen
           name="PdfViewer"
-          component={PdfViewerScreen}
+          component={PdfStackNavigator}
           options={{
             tabBarLabel: translate("demoNavigator:pdfTab"),
-            tabBarIcon: ({ focused }) => (
-              <Icon icon="view" color={focused ? colors.tint : colors.tintInactive} size={30} />
-            ),
-          }}
-        />
-
-        <Tab.Screen
-          name="PdfLinkEditor"
-          component={PdfLinkEditorScreen}
-          options={{
-            tabBarLabel: translate("demoNavigator:pdfLinksTab"),
             tabBarIcon: ({ focused }) => (
               <Icon icon="view" color={focused ? colors.tint : colors.tintInactive} size={30} />
             ),

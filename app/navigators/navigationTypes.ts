@@ -7,14 +7,19 @@ import {
 } from "@react-navigation/native"
 import { NativeStackScreenProps } from "@react-navigation/native-stack"
 
+// Pdf Stack (nested inside PdfViewer tab) - PdfLinkEditor only accessible via button in PdfViewer
+export type PdfStackParamList = {
+  PdfViewer: { uri?: string; fileId?: string; page?: number } | undefined
+  PdfLinkEditor: { fileId?: string } | undefined
+}
+
 // Demo Tab Navigator types
 export type DemoTabParamList = {
   DemoCommunity: undefined
   DemoShowroom: { queryIndex?: string; itemIndex?: string }
   DemoDebug: undefined
   DemoPodcastList: undefined
-  PdfViewer: { uri?: string; fileId?: string; page?: number } | undefined
-  PdfLinkEditor: { fileId?: string } | undefined
+  PdfViewer: NavigatorScreenParams<PdfStackParamList> | undefined
   QrScanner: undefined
 }
 
@@ -35,6 +40,15 @@ export type AppStackScreenProps<T extends keyof AppStackParamList> = NativeStack
 export type DemoTabScreenProps<T extends keyof DemoTabParamList> = CompositeScreenProps<
   BottomTabScreenProps<DemoTabParamList, T>,
   AppStackScreenProps<keyof AppStackParamList>
+>
+
+// Screens inside PdfStack (PdfViewer, PdfLinkEditor)
+export type PdfStackScreenProps<T extends keyof PdfStackParamList> = CompositeScreenProps<
+  NativeStackScreenProps<PdfStackParamList, T>,
+  CompositeScreenProps<
+    BottomTabScreenProps<DemoTabParamList, "PdfViewer">,
+    AppStackScreenProps<keyof AppStackParamList>
+  >
 >
 
 export interface NavigationProps extends Partial<
