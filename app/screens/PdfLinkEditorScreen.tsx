@@ -147,6 +147,31 @@ export const PdfLinkEditorScreen: FC<DemoTabScreenProps<"PdfLinkEditor">> = (pro
             setEditorLinks(getPdfLinks(fileId) ?? [])
           }
         }
+        // Handle bulk links saved - don't update state until user dismisses the result modal
+        if (message.type === "bulkLinksSaved" && fileId && Array.isArray(message.links)) {
+          for (const link of message.links) {
+            const { page, rect, destinations } = link
+            if (
+              typeof page === "number" &&
+              rect &&
+              typeof rect.x === "number" &&
+              typeof rect.y === "number" &&
+              typeof rect.width === "number" &&
+              typeof rect.height === "number" &&
+              Array.isArray(destinations) &&
+              destinations.length > 0
+            ) {
+              addPdfLink(fileId, { page, rect, destinations })
+            }
+          }
+          // Don't call setEditorLinks here - let the WebView show the result first
+          // The links will be visible when the page is refreshed or user navigates away
+        }
+        // Handle bulk result dismissed - now safe to update the editor links
+        if (message.type === "bulkResultDismissed" && fileId) {
+          pageForLoadRef.current = editorPage
+          setEditorLinks(getPdfLinks(fileId) ?? [])
+        }
       } catch {
         // Ignore parse errors
       }

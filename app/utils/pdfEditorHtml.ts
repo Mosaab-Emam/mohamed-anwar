@@ -24,13 +24,29 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #1a1a1a; height: 100vh; min-height: 100vh; display: flex; flex-direction: column; align-items: center; font-family: system-ui, sans-serif; }
-    #toolbar { position: fixed; top: 0; left: 0; right: 0; height: 44px; background: #2d2d2d; display: flex; align-items: center; justify-content: center; gap: 12px; z-index: 10; }
+    #toolbar { position: fixed; top: 0; left: 0; right: 0; min-height: 88px; background: #2d2d2d; display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; z-index: 10; }
+    #toolbar.has-results { min-height: 124px; }
+    .toolbarRow { display: flex; align-items: center; justify-content: center; gap: 12px; }
     #pageInfo { color: #eee; font-size: 14px; }
     .navBtn { background: #444; color: #eee; border: none; padding: 6px 12px; font-size: 14px; border-radius: 6px; cursor: pointer; }
     .navBtn:disabled { opacity: 0.4; cursor: not-allowed; }
     #addLinkBtn { background: #2d6a2d; color: #eee; }
     #addLinkBtn.active { background: #4a9a4a; }
-    #container { flex: 1; width: 100%; min-height: 200px; overflow: auto; padding: 52px 8px 16px; }
+    #searchInput { flex: 1; padding: 6px 10px; border-radius: 6px; border: 1px solid #555; background: #1a1a1a; color: #eee; font-size: 14px; min-width: 120px; max-width: 200px; }
+    #searchInfo { color: #eee; font-size: 12px; min-width: 70px; text-align: center; }
+    .resultsRow { display: none; align-items: center; justify-content: center; gap: 12px; padding: 4px 0; }
+    .resultsRow.visible { display: flex; }
+    #resultsText { color: #aaa; font-size: 13px; }
+    #linkAllBtn { background: #6a2d6a; color: #eee; padding: 8px 16px; }
+    #bulkResultPanel { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #2d2d2d; color: #eee; padding: 20px; border-radius: 12px; z-index: 30; display: none; max-width: 90%; text-align: center; }
+    #bulkResultPanel.visible { display: block; }
+    #bulkResultPanel h3 { margin-bottom: 12px; color: #4a9a4a; }
+    #bulkResultPanel p { margin-bottom: 8px; font-size: 14px; }
+    #bulkResultPanel .pages { font-size: 12px; color: #aaa; margin-bottom: 16px; max-height: 100px; overflow-y: auto; }
+    #bulkOverlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 25; display: none; }
+    #bulkOverlay.visible { display: block; }
+    #container { flex: 1; width: 100%; min-height: 200px; overflow: auto; padding: 96px 8px 16px; }
+    #container.has-results { padding-top: 132px; }
     .pageWrap { position: relative; display: inline-block; margin: 0 auto 16px; }
     .pageWrap canvas { display: block; background: #fff; margin: 0; }
     .linkOverlay { position: absolute; pointer-events: none; background: rgba(100, 150, 255, 0.2); border: 1px solid rgba(100, 150, 255, 0.6); left: 0; top: 0; }
@@ -49,10 +65,21 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
 </head>
 <body>
   <div id="toolbar">
-    <button type="button" class="navBtn" id="prevBtn">Prev</button>
-    <span id="pageInfo">—</span>
-    <button type="button" class="navBtn" id="nextBtn">Next</button>
-    <button type="button" class="navBtn" id="addLinkBtn">Add link</button>
+    <div class="toolbarRow">
+      <button type="button" class="navBtn" id="prevBtn">Prev</button>
+      <span id="pageInfo">—</span>
+      <button type="button" class="navBtn" id="nextBtn">Next</button>
+      <button type="button" class="navBtn" id="addLinkBtn">Add link</button>
+    </div>
+    <div class="toolbarRow">
+      <input type="text" id="searchInput" placeholder="Search..." />
+      <button type="button" class="navBtn" id="searchBtn">Search</button>
+      <span id="searchInfo">—</span>
+    </div>
+    <div class="resultsRow" id="resultsRow">
+      <span id="resultsText"></span>
+      <button type="button" class="navBtn" id="linkAllBtn">Link All Matches</button>
+    </div>
   </div>
   <div id="container"></div>
   <div id="error"></div>
@@ -62,6 +89,13 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
     <button type="button" class="formBtn secondary" id="addDestBtn">Add destination</button>
     <button type="button" class="formBtn primary" id="saveLinkBtn">Save link</button>
     <button type="button" class="formBtn secondary" id="cancelFormBtn">Cancel</button>
+  </div>
+  <div id="bulkOverlay"></div>
+  <div id="bulkResultPanel">
+    <h3 id="bulkResultTitle">Links Created</h3>
+    <p id="bulkResultSummary"></p>
+    <div class="pages" id="bulkResultPages"></div>
+    <button type="button" class="formBtn primary" id="bulkResultOkBtn">OK</button>
   </div>
   <script src="${PDF_JS_URL}"><\/script>
   <script>
@@ -88,6 +122,11 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
       var draftDestinations = [{ title: '', page: 1 }];
       var wrapEl = null;
       var canvasW = 0, canvasH = 0;
+      var searchResults = [];
+      var searchQuery = '';
+      var searchInProgress = false;
+      var bulkLinkMode = false;
+      var bulkMatchRects = []; // Array of { page, rect } for all matches with positions
 
       function showErr(msg) { errEl.textContent = msg || ''; }
 
@@ -259,29 +298,6 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
         renderDestList();
       };
 
-      document.getElementById('saveLinkBtn').onclick = function() {
-        syncDraft();
-        var valid = draftDestinations.filter(function(d) { return (d.title || '').trim(); });
-        if (valid.length === 0) { alert('Add at least one destination with a title'); return; }
-        if (!draftRect) return;
-        var payload = {
-          type: 'linkSaved',
-          page: currentPage,
-          rect: draftRect,
-          destinations: valid.map(function(d) { return { title: d.title.trim(), page: d.page }; })
-        };
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify(payload));
-        }
-        formPanel.classList.remove('visible');
-        draftRect = null;
-      };
-
-      document.getElementById('cancelFormBtn').onclick = function() {
-        formPanel.classList.remove('visible');
-        draftRect = null;
-      };
-
       addLinkBtn.onclick = function() {
         addMode = !addMode;
         addLinkBtn.classList.toggle('active', addMode);
@@ -311,6 +327,261 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
         var p = Math.max(1, Math.min(Math.floor(n), numPages));
         renderPage(p);
         notifyPage(p);
+      };
+
+      function updateSearchInfo() {
+        var searchInfo = document.getElementById('searchInfo');
+        var resultsRow = document.getElementById('resultsRow');
+        var resultsText = document.getElementById('resultsText');
+        var toolbar = document.getElementById('toolbar');
+        var containerEl = document.getElementById('container');
+        
+        if (!searchInfo) return;
+        
+        var hasResults = bulkMatchRects.length > 0;
+        
+        if (searchInProgress) {
+          searchInfo.textContent = 'Searching...';
+          if (resultsRow) resultsRow.classList.remove('visible');
+          if (toolbar) toolbar.classList.remove('has-results');
+          if (containerEl) containerEl.classList.remove('has-results');
+        } else if (hasResults) {
+          var matchCount = bulkMatchRects.length;
+          var pageCount = searchResults.length;
+          searchInfo.textContent = matchCount + ' found';
+          if (resultsText) {
+            resultsText.textContent = matchCount + ' match' + (matchCount !== 1 ? 'es' : '') + ' on ' + pageCount + ' page' + (pageCount !== 1 ? 's' : '');
+          }
+          if (resultsRow) resultsRow.classList.add('visible');
+          if (toolbar) toolbar.classList.add('has-results');
+          if (containerEl) containerEl.classList.add('has-results');
+        } else if (searchQuery) {
+          searchInfo.textContent = 'No matches';
+          if (resultsRow) resultsRow.classList.remove('visible');
+          if (toolbar) toolbar.classList.remove('has-results');
+          if (containerEl) containerEl.classList.remove('has-results');
+        } else {
+          searchInfo.textContent = '—';
+          if (resultsRow) resultsRow.classList.remove('visible');
+          if (toolbar) toolbar.classList.remove('has-results');
+          if (containerEl) containerEl.classList.remove('has-results');
+        }
+      }
+
+      async function performSearch() {
+        if (!pdfDoc || searchInProgress) return;
+        
+        var searchInputEl = document.getElementById('searchInput');
+        if (!searchInputEl) return;
+        
+        var query = searchInputEl.value.trim();
+        if (!query) {
+          searchQuery = '';
+          searchResults = [];
+          bulkMatchRects = [];
+          updateSearchInfo();
+          return;
+        }
+
+        searchQuery = query.toLowerCase();
+        searchResults = [];
+        bulkMatchRects = [];
+        searchInProgress = true;
+        updateSearchInfo();
+
+        try {
+          for (var pageNum = 1; pageNum <= numPages; pageNum++) {
+            var page = await pdfDoc.getPage(pageNum);
+            var textContent = await page.getTextContent();
+            var viewport = page.getViewport({ scale: 1 });
+            var pageWidth = viewport.width;
+            var pageHeight = viewport.height;
+            
+            // Build text with position info
+            var items = textContent.items;
+            var pageMatches = [];
+            
+            // For each text item, check if it contains the search query
+            for (var i = 0; i < items.length; i++) {
+              var item = items[i];
+              var str = (item.str || '').toLowerCase();
+              var searchIdx = 0;
+              
+              while ((searchIdx = str.indexOf(searchQuery, searchIdx)) !== -1) {
+                // Get the transform matrix for this text item
+                var transform = item.transform;
+                var x = transform[4];
+                var y = transform[5];
+                var itemWidth = item.width || 0;
+                var itemHeight = item.height || Math.abs(transform[3]) || 12;
+                
+                // Calculate approximate position of the match within the text item
+                var charWidth = itemWidth / Math.max(1, item.str.length);
+                var matchX = x + (searchIdx * charWidth);
+                var matchWidth = query.length * charWidth;
+                
+                // Convert to normalized coordinates (0-1 range, top-left origin)
+                // PDF coordinates are bottom-left origin, so we need to flip Y
+                var normX = Math.max(0, Math.min(1, matchX / pageWidth));
+                var normY = Math.max(0, Math.min(1, 1 - ((y + itemHeight) / pageHeight)));
+                var normWidth = Math.min(1 - normX, Math.max(0.02, matchWidth / pageWidth));
+                var normHeight = Math.min(1 - normY, Math.max(0.02, itemHeight / pageHeight));
+                
+                // Add some padding around the match
+                var padding = 0.005;
+                normX = Math.max(0, normX - padding);
+                normY = Math.max(0, normY - padding);
+                normWidth = Math.min(1 - normX, normWidth + padding * 2);
+                normHeight = Math.min(1 - normY, normHeight + padding * 2);
+                
+                pageMatches.push({
+                  page: pageNum,
+                  rect: { x: normX, y: normY, width: normWidth, height: normHeight }
+                });
+                
+                searchIdx += searchQuery.length;
+              }
+            }
+            
+            if (pageMatches.length > 0) {
+              searchResults.push({ page: pageNum, matches: pageMatches.length });
+              bulkMatchRects = bulkMatchRects.concat(pageMatches);
+            }
+          }
+        } catch (e) {
+          showErr('Search error: ' + (e.message || e));
+        } finally {
+          searchInProgress = false;
+          updateSearchInfo();
+        }
+      }
+
+      var searchBtn = document.getElementById('searchBtn');
+      var searchInputEl = document.getElementById('searchInput');
+      var linkAllBtn = document.getElementById('linkAllBtn');
+      var bulkOverlay = document.getElementById('bulkOverlay');
+      var bulkResultPanel = document.getElementById('bulkResultPanel');
+      var bulkResultOkBtn = document.getElementById('bulkResultOkBtn');
+      
+      if (searchBtn) {
+        searchBtn.onclick = performSearch;
+      }
+      
+      if (searchInputEl) {
+        searchInputEl.onkeydown = function(e) {
+          if (e.key === 'Enter') {
+            performSearch();
+          }
+        };
+      }
+
+      function showBulkForm() {
+        if (bulkMatchRects.length === 0) return;
+        bulkLinkMode = true;
+        draftDestinations = [{ title: '', page: currentPage }];
+        renderDestList();
+        formTitle.textContent = 'Link ' + bulkMatchRects.length + ' matches of "' + searchQuery + '"';
+        formPanel.classList.add('visible');
+      }
+
+      function showBulkResult(linkCount, pages) {
+        var summaryEl = document.getElementById('bulkResultSummary');
+        var pagesEl = document.getElementById('bulkResultPages');
+        if (summaryEl) {
+          summaryEl.textContent = linkCount + ' link' + (linkCount !== 1 ? 's' : '') + ' created successfully!';
+        }
+        if (pagesEl) {
+          var uniquePages = pages.filter(function(p, i, arr) { return arr.indexOf(p) === i; }).sort(function(a, b) { return a - b; });
+          pagesEl.textContent = 'Pages: ' + uniquePages.join(', ');
+        }
+        if (bulkOverlay) bulkOverlay.classList.add('visible');
+        if (bulkResultPanel) bulkResultPanel.classList.add('visible');
+      }
+
+      function hideBulkResult() {
+        if (bulkOverlay) bulkOverlay.classList.remove('visible');
+        if (bulkResultPanel) bulkResultPanel.classList.remove('visible');
+        
+        // Notify React Native that the result was dismissed - this triggers the state update
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'bulkResultDismissed' }));
+        }
+        
+        // Clear search after dismissing the result
+        bulkMatchRects = [];
+        searchQuery = '';
+        searchResults = [];
+        if (searchInputEl) searchInputEl.value = '';
+        updateSearchInfo();
+      }
+
+      if (linkAllBtn) {
+        linkAllBtn.onclick = showBulkForm;
+      }
+
+      if (bulkResultOkBtn) {
+        bulkResultOkBtn.onclick = hideBulkResult;
+      }
+
+      if (bulkOverlay) {
+        bulkOverlay.onclick = hideBulkResult;
+      }
+
+      // Save button handler - handles both single link and bulk link modes
+      document.getElementById('saveLinkBtn').onclick = function() {
+        syncDraft();
+        var valid = draftDestinations.filter(function(d) { return (d.title || '').trim(); });
+        if (valid.length === 0) { alert('Add at least one destination with a title'); return; }
+
+        if (bulkLinkMode && bulkMatchRects.length > 0) {
+          // Bulk save mode - save all matches in a single message
+          var pages = [];
+          var destinations = valid.map(function(d) { return { title: d.title.trim(), page: d.page }; });
+          var links = [];
+          
+          for (var i = 0; i < bulkMatchRects.length; i++) {
+            var match = bulkMatchRects[i];
+            pages.push(match.page);
+            links.push({
+              page: match.page,
+              rect: match.rect,
+              destinations: destinations
+            });
+          }
+          
+          // Send all links in a single bulk message
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'bulkLinksSaved',
+              links: links
+            }));
+          }
+          
+          formPanel.classList.remove('visible');
+          bulkLinkMode = false;
+          showBulkResult(links.length, pages);
+        } else {
+          // Single link mode (original behavior)
+          if (!draftRect) return;
+          var payload = {
+            type: 'linkSaved',
+            page: currentPage,
+            rect: draftRect,
+            destinations: valid.map(function(d) { return { title: d.title.trim(), page: d.page }; })
+          };
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+          }
+          formPanel.classList.remove('visible');
+          draftRect = null;
+        }
+      };
+
+      // Update cancel button to handle bulk mode
+      document.getElementById('cancelFormBtn').onclick = function() {
+        formPanel.classList.remove('visible');
+        draftRect = null;
+        bulkLinkMode = false;
       };
     })();
   </script>
