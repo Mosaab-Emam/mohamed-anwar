@@ -1,5 +1,4 @@
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useFocusEffect } from "@react-navigation/native"
 import {
   ActivityIndicator,
   FlatList,
@@ -13,6 +12,7 @@ import {
 } from "react-native"
 import * as DocumentPicker from "expo-document-picker"
 import * as MediaLibrary from "expo-media-library"
+import { useFocusEffect } from "@react-navigation/native"
 import * as FileSystem from "expo-file-system/legacy"
 import QRCode from "react-native-qrcode-svg"
 import { WebView } from "react-native-webview"
@@ -27,8 +27,8 @@ import { useAppTheme } from "@/theme/context"
 import { $styles } from "@/theme/styles"
 import type { ThemedStyle } from "@/theme/types"
 import { getPdfFile, storePdfFile } from "@/utils/pdfFileStorage"
-import type { PdfLink, PdfLinkDestination } from "@/utils/pdfLinkStorage"
-import { getPdfLinks } from "@/utils/pdfLinkStorage"
+import type { PdfInfoBubble, PdfLinkDestination } from "@/utils/pdfLinkStorage"
+import { getPdfInfoBubbles, getPdfLinks } from "@/utils/pdfLinkStorage"
 import { getPdfViewerHtml } from "@/utils/pdfViewerHtml"
 import { useHeader } from "@/utils/useHeader"
 
@@ -55,15 +55,21 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfViewer">> = (props) => 
   const [linksRefreshKey, setLinksRefreshKey] = useState(0)
   const [destinationModalVisible, setDestinationModalVisible] = useState(false)
   const [destinationChoices, setDestinationChoices] = useState<PdfLinkDestination[] | null>(null)
-  const pdfLinks = useMemo(
-    () => (fileId ? getPdfLinks(fileId) ?? [] : []),
-    [fileId, linksRefreshKey],
-  )
+  const [infoBubbleModalVisible, setInfoBubbleModalVisible] = useState(false)
+  const [selectedInfoBubble, setSelectedInfoBubble] = useState<PdfInfoBubble | null>(null)
+  const pdfLinks = useMemo(() => {
+    void linksRefreshKey
+    return fileId ? (getPdfLinks(fileId) ?? []) : []
+  }, [fileId, linksRefreshKey])
+  const pdfInfoBubbles = useMemo(() => {
+    void linksRefreshKey
+    return fileId ? (getPdfInfoBubbles(fileId) ?? []) : []
+  }, [fileId, linksRefreshKey])
 
   useFocusEffect(
     useCallback(() => {
       setLinksRefreshKey((k) => k + 1)
-    }, [fileId]),
+    }, []),
   )
 
   useHeader(
@@ -164,31 +170,55 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfViewer">> = (props) => 
     navigation.setParams({ uri: undefined, fileId: undefined, page: undefined } as object)
   }, [navigation])
 
-  const handleWebViewMessage = useCallback((event: { nativeEvent: { data: string } }) => {
-    try {
-      const message = JSON.parse(event.nativeEvent.data)
-      if (message.type === "pageChanged" && typeof message.page === "number") {
-        setCurrentPage(message.page)
+  const handleWebViewMessage = useCallback(
+    (event: { nativeEvent: { data: string } }) => {
+      try {
+        const message = JSON.parse(event.nativeEvent.data)
+        if (message.type === "pageChanged" && typeof message.page === "number") {
+          setCurrentPage(message.page)
+        }
+        if (
+          message.type === "linkClicked" &&
+          Array.isArray(message.destinations) &&
+          message.destinations.length > 0
+        ) {
+          setDestinationChoices(message.destinations as PdfLinkDestination[])
+          setDestinationModalVisible(true)
+        }
+        if (message.type === "infoBubbleClicked" && typeof message.text === "string") {
+          setSelectedInfoBubble({
+            id: typeof message.infoBubbleId === "string" ? message.infoBubbleId : "preview",
+            page: currentPage,
+            position: { x: 0, y: 0 },
+            text: message.text,
+          })
+          setInfoBubbleModalVisible(true)
+        }
+      } catch {
+        // Ignore parse errors
       }
-      if (message.type === "linkClicked" && Array.isArray(message.destinations) && message.destinations.length > 0) {
-        setDestinationChoices(message.destinations as PdfLinkDestination[])
-        setDestinationModalVisible(true)
-      }
-    } catch {
-      // Ignore parse errors
-    }
-  }, [])
+    },
+    [currentPage],
+  )
 
   const closeDestinationModal = useCallback(() => {
     setDestinationModalVisible(false)
     setDestinationChoices(null)
   }, [])
 
-  const selectDestination = useCallback((d: PdfLinkDestination) => {
-    setCurrentPage(d.page)
-    webViewRef.current?.injectJavaScript(`window.goToPage(${d.page}); true;`)
-    closeDestinationModal()
-  }, [closeDestinationModal])
+  const closeInfoBubbleModal = useCallback(() => {
+    setInfoBubbleModalVisible(false)
+    setSelectedInfoBubble(null)
+  }, [])
+
+  const selectDestination = useCallback(
+    (d: PdfLinkDestination) => {
+      setCurrentPage(d.page)
+      webViewRef.current?.injectJavaScript(`window.goToPage(${d.page}); true;`)
+      closeDestinationModal()
+    },
+    [closeDestinationModal],
+  )
 
   const generateDeepLinkUrl = useCallback(() => {
     if (!fileId || !currentPage) return null
@@ -253,8 +283,9 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfViewer">> = (props) => 
       base64: isLocal && base64 ? base64 : undefined,
       page,
       links: pdfLinks.length > 0 ? pdfLinks : undefined,
+      infoBubbles: pdfInfoBubbles.length > 0 ? pdfInfoBubbles : undefined,
     })
-  }, [uri, base64, base64Error, isLocal, page, pdfLinks])
+  }, [uri, base64, base64Error, isLocal, page, pdfLinks, pdfInfoBubbles])
 
   const isLoadingBase64 = isLocal && uri != null && base64 == null && base64Error == null
   const showViewer = html != null && !isLoadingBase64
@@ -313,7 +344,7 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfViewer">> = (props) => 
       {showViewer && html != null && (
         <View style={$styles.flex1}>
           <WebView
-            key={`pdf-${fileId ?? ""}-${page}-${pdfLinks.length}-${linksRefreshKey}`}
+            key={`pdf-${fileId ?? ""}-${page}-${pdfLinks.length}-${pdfInfoBubbles.length}-${linksRefreshKey}`}
             ref={webViewRef}
             source={{ html }}
             style={themed($webview)}
@@ -362,7 +393,11 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfViewer">> = (props) => 
         >
           <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
             <View style={themed($destinationModalContent)}>
-              <Text preset="heading" tx="pdfViewerScreen:chooseDestination" style={themed($destinationModalTitle)} />
+              <Text
+                preset="heading"
+                tx="pdfViewerScreen:chooseDestination"
+                style={themed($destinationModalTitle)}
+              />
               <FlatList
                 data={destinationChoices ?? []}
                 keyExtractor={(item, index) => `${item.page}-${item.title}-${index}`}
@@ -373,7 +408,10 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfViewer">> = (props) => 
                     activeOpacity={0.7}
                   >
                     <Text
-                      text={translate("pdfViewerScreen:destinationOption", { title: item.title, page: item.page })}
+                      text={translate("pdfViewerScreen:destinationOption", {
+                        title: item.title,
+                        page: item.page,
+                      })}
                       preset="default"
                       style={themed($destinationItemText)}
                     />
@@ -381,7 +419,40 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfViewer">> = (props) => 
                 )}
                 style={themed($destinationList)}
               />
-              <Button tx="common:cancel" onPress={closeDestinationModal} style={themed($cancelQrButton)} />
+              <Button
+                tx="common:cancel"
+                onPress={closeDestinationModal}
+                style={themed($cancelQrButton)}
+              />
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal
+        visible={infoBubbleModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeInfoBubbleModal}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          style={[styles.modalOverlay, themed($modalOverlay)]}
+          onPress={closeInfoBubbleModal}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+            <View style={themed($infoBubbleModalContent)}>
+              <Text text="معلومة" preset="heading" style={themed($destinationModalTitle)} />
+              <Text
+                text={selectedInfoBubble?.text ?? "لا يوجد نص معلومة."}
+                preset="default"
+                style={themed($infoBubbleText)}
+              />
+              <Button
+                tx="common:cancel"
+                onPress={closeInfoBubbleModal}
+                style={themed($cancelQrButton)}
+              />
             </View>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -517,8 +588,23 @@ const $destinationModalContent: ThemedStyle<ViewStyle> = ({ colors, spacing }) =
   maxHeight: "90%",
 })
 
+const $infoBubbleModalContent: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  alignItems: "stretch",
+  backgroundColor: colors.background,
+  borderRadius: 16,
+  padding: spacing.xl,
+  width: "100%",
+  maxWidth: 400,
+})
+
 const $destinationModalTitle: ThemedStyle<TextStyle> = ({ spacing }) => ({
   marginBottom: spacing.md,
+})
+
+const $infoBubbleText: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
+  color: colors.text,
+  marginBottom: spacing.lg,
+  lineHeight: 22,
 })
 
 const $destinationList: ThemedStyle<ViewStyle> = ({ spacing }) => ({

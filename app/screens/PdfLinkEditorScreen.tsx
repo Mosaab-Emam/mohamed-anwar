@@ -1,11 +1,5 @@
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import {
-  ActivityIndicator,
-  Platform,
-  TextStyle,
-  View,
-  ViewStyle,
-} from "react-native"
+import { ActivityIndicator, Platform, TextStyle, View, ViewStyle } from "react-native"
 import * as DocumentPicker from "expo-document-picker"
 import * as FileSystem from "expo-file-system/legacy"
 import { WebView } from "react-native-webview"
@@ -19,9 +13,16 @@ import { PdfStackScreenProps } from "@/navigators/navigationTypes"
 import { useAppTheme } from "@/theme/context"
 import { $styles } from "@/theme/styles"
 import type { ThemedStyle } from "@/theme/types"
-import { getPdfFile, storePdfFile } from "@/utils/pdfFileStorage"
-import { addPdfLink, getPdfLinks, type PdfLink } from "@/utils/pdfLinkStorage"
 import { getPdfEditorHtml } from "@/utils/pdfEditorHtml"
+import { getPdfFile, storePdfFile } from "@/utils/pdfFileStorage"
+import {
+  addPdfInfoBubble,
+  addPdfLink,
+  getPdfInfoBubbles,
+  getPdfLinks,
+  type PdfInfoBubble,
+  type PdfLink,
+} from "@/utils/pdfLinkStorage"
 import { useHeader } from "@/utils/useHeader"
 
 type PickedFile = { uri: string; name: string }
@@ -35,6 +36,7 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
   const [fileId, setFileId] = useState<string | null>(null)
   const [isStoring, setIsStoring] = useState(false)
   const [editorLinks, setEditorLinks] = useState<PdfLink[]>([])
+  const [editorInfoBubbles, setEditorInfoBubbles] = useState<PdfInfoBubble[]>([])
   const [editorPage, setEditorPage] = useState(1)
   /** Page to open when the editor HTML is (re)loaded. Only updated when we force a reload (e.g. after saving a link), not on every Next/Prev. */
   const pageForLoadRef = useRef(1)
@@ -57,9 +59,11 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
     const stored = getPdfFile(fileIdFromParams)
     if (stored) {
       const links = getPdfLinks(fileIdFromParams) ?? []
+      const infoBubbles = getPdfInfoBubbles(fileIdFromParams) ?? []
       setPicked({ uri: stored.uri, name: stored.name })
       setFileId(fileIdFromParams)
       setEditorLinks(links)
+      setEditorInfoBubbles(infoBubbles)
       setBase64(null)
       setBase64Error(null)
       pageForLoadRef.current = 1
@@ -67,6 +71,8 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
       setBase64Error(translate("pdfViewerScreen:fileNotFound"))
       setPicked(null)
       setFileId(null)
+      setEditorLinks([])
+      setEditorInfoBubbles([])
     }
   }, [fileIdFromParams])
 
@@ -94,6 +100,7 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
         const storedFileId = await storePdfFile(uri, picked?.name ?? "document.pdf")
         setFileId(storedFileId)
         setEditorLinks(getPdfLinks(storedFileId) ?? [])
+        setEditorInfoBubbles(getPdfInfoBubbles(storedFileId) ?? [])
       } catch (e) {
         console.warn("Failed to store file for editor:", e)
       } finally {
@@ -115,6 +122,7 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
         setPicked({ uri: asset.uri, name: asset.name ?? "document.pdf" })
         setFileId(null)
         setEditorLinks([])
+        setEditorInfoBubbles([])
         setEditorPage(1)
         pageForLoadRef.current = 1
         setBase64(null)
@@ -149,6 +157,28 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
             setEditorLinks(getPdfLinks(fileId) ?? [])
           }
         }
+        if (message.type === "infoBubbleSaved" && fileId) {
+          const { page, position, text } = message
+          if (
+            typeof page === "number" &&
+            position &&
+            typeof position.x === "number" &&
+            typeof position.y === "number" &&
+            typeof text === "string" &&
+            text.trim().length > 0
+          ) {
+            pageForLoadRef.current = editorPage
+            addPdfInfoBubble(fileId, {
+              page,
+              position: {
+                x: Math.max(0, Math.min(1, position.x)),
+                y: Math.max(0, Math.min(1, position.y)),
+              },
+              text: text.trim(),
+            })
+            setEditorInfoBubbles(getPdfInfoBubbles(fileId) ?? [])
+          }
+        }
         // Handle bulk links saved - don't update state until user dismisses the result modal
         if (message.type === "bulkLinksSaved" && fileId && Array.isArray(message.links)) {
           for (const link of message.links) {
@@ -173,6 +203,7 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
         if (message.type === "bulkResultDismissed" && fileId) {
           pageForLoadRef.current = editorPage
           setEditorLinks(getPdfLinks(fileId) ?? [])
+          setEditorInfoBubbles(getPdfInfoBubbles(fileId) ?? [])
         }
       } catch {
         // Ignore parse errors
@@ -189,8 +220,9 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
       base64: isLocal && base64 ? base64 : undefined,
       page: pageForLoadRef.current,
       links: editorLinks,
+      infoBubbles: editorInfoBubbles,
     })
-  }, [uri, base64, base64Error, isLocal, editorLinks])
+  }, [uri, base64, base64Error, isLocal, editorLinks, editorInfoBubbles])
 
   const isLoadingBase64 =
     (fileIdFromParams != null && !picked) ||
@@ -235,7 +267,11 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
       {base64Error != null && !showEditor && (
         <View style={[themed($centered), themed($emptyContainer)]}>
           <Text text={base64Error} style={themed($errorText)} />
-          <Button tx="pdfLinkEditorScreen:selectPdf" onPress={pickDocument} style={themed($selectButton)} />
+          <Button
+            tx="pdfLinkEditorScreen:selectPdf"
+            onPress={pickDocument}
+            style={themed($selectButton)}
+          />
         </View>
       )}
 

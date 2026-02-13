@@ -1,4 +1,4 @@
-import type { PdfLink } from "./pdfLinkStorage"
+import type { PdfInfoBubble, PdfLink } from "./pdfLinkStorage"
 
 const PDF_JS_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
 const PDF_WORKER_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"
@@ -8,14 +8,16 @@ export interface PdfEditorHtmlOptions {
   uri?: string
   page: number
   links: PdfLink[]
+  infoBubbles: PdfInfoBubble[]
 }
 
 export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
-  const { base64, uri, page, links } = options
+  const { base64, uri, page, links, infoBubbles } = options
   const base64Json = base64 != null ? JSON.stringify(base64) : "null"
   const uriJson = uri != null ? JSON.stringify(uri) : "null"
   const pageNum = Math.max(1, Math.floor(page))
   const linksJson = JSON.stringify(links)
+  const infoBubblesJson = JSON.stringify(infoBubbles)
 
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -33,6 +35,8 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
     .navBtn:disabled { opacity: 0.4; cursor: not-allowed; }
     #addLinkBtn { background: #2d6a2d; color: #eee; }
     #addLinkBtn.active { background: #4a9a4a; }
+    #addInfoBtn { background: #2d4a6a; color: #eee; }
+    #addInfoBtn.active { background: #4a7ca3; }
     #searchInput { flex: 1; padding: 6px 10px; border-radius: 6px; border: 1px solid #555; background: #1a1a1a; color: #eee; font-size: 14px; min-width: 120px; max-width: 200px; }
     #searchInfo { color: #eee; font-size: 12px; min-width: 70px; text-align: center; }
     .resultsRow { display: none; align-items: center; justify-content: center; gap: 12px; padding: 4px 0; }
@@ -51,6 +55,22 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
     .pageWrap { position: relative; display: inline-block; margin: 0 auto 16px; }
     .pageWrap canvas { display: block; background: #fff; margin: 0; }
     .linkOverlay { position: absolute; pointer-events: none; background: rgba(100, 150, 255, 0.2); border: 1px solid rgba(100, 150, 255, 0.6); left: 0; top: 0; }
+    .infoBubbleOverlay {
+      position: absolute;
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      transform: translate(-50%, -50%);
+      background: #2d4a6a;
+      color: #fff;
+      font-weight: 700;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      pointer-events: none;
+    }
     .drawRect { position: absolute; pointer-events: none; background: rgba(255, 200, 80, 0.3); border: 2px solid #e0a020; }
     #formPanel { position: fixed; bottom: 0; left: 0; right: 0; background: #2d2d2d; color: #eee; padding: 12px; max-height: 45vh; overflow: auto; z-index: 20; display: none; }
     #formPanel.visible { display: block; }
@@ -61,6 +81,22 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
     .formBtn { padding: 6px 12px; border-radius: 6px; border: none; cursor: pointer; font-size: 14px; margin-right: 8px; margin-top: 8px; }
     .formBtn.primary { background: #2d6a2d; color: #eee; }
     .formBtn.secondary { background: #444; color: #eee; }
+    #infoFormPanel { position: fixed; bottom: 0; left: 0; right: 0; background: #2d2d2d; color: #eee; padding: 12px; max-height: 40vh; overflow: auto; z-index: 20; display: none; }
+    #infoFormPanel.visible { display: block; }
+    #infoFormPanel h3 { margin-bottom: 8px; font-size: 14px; }
+    #infoTextArea {
+      width: 100%;
+      min-height: 110px;
+      resize: vertical;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid #555;
+      background: #1a1a1a;
+      color: #eee;
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
     #error { color: #e74c3c; padding: 16px; }
   </style>
 </head>
@@ -74,6 +110,7 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
       </span>
       <button type="button" class="navBtn" id="nextBtn">التالي</button>
       <button type="button" class="navBtn" id="addLinkBtn">إضافة رابط</button>
+      <button type="button" class="navBtn" id="addInfoBtn">إضافة معلومة</button>
     </div>
     <div class="toolbarRow">
       <input type="text" id="searchInput" placeholder="ابحث..." />
@@ -94,6 +131,12 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
     <button type="button" class="formBtn primary" id="saveLinkBtn">حفظ الرابط</button>
     <button type="button" class="formBtn secondary" id="cancelFormBtn">إلغاء</button>
   </div>
+  <div id="infoFormPanel">
+    <h3 id="infoFormTitle">معلومة جديدة</h3>
+    <textarea id="infoTextArea" placeholder="اكتب المعلومة هنا..."></textarea>
+    <button type="button" class="formBtn primary" id="saveInfoBtn">حفظ المعلومة</button>
+    <button type="button" class="formBtn secondary" id="cancelInfoBtn">إلغاء</button>
+  </div>
   <div id="bulkOverlay"></div>
   <div id="bulkResultPanel">
     <h3 id="bulkResultTitle">تم إنشاء الروابط</h3>
@@ -108,6 +151,7 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
       var PDF_URI = ${uriJson};
       var PDF_PAGE = ${pageNum};
       var PDF_LINKS = ${linksJson};
+      var PDF_INFO_BUBBLES = ${infoBubblesJson};
 
       var pdfDoc = null;
       var numPages = 0;
@@ -120,12 +164,18 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
       var formPanel = document.getElementById('formPanel');
       var formTitle = document.getElementById('formTitle');
       var destList = document.getElementById('destList');
+      var infoFormPanel = document.getElementById('infoFormPanel');
+      var infoTextArea = document.getElementById('infoTextArea');
+      var infoFormTitle = document.getElementById('infoFormTitle');
       var addLinkBtn = document.getElementById('addLinkBtn');
+      var addInfoBtn = document.getElementById('addInfoBtn');
       var addMode = false;
+      var infoMode = false;
       var drawStart = null;
       var drawRectEl = null;
       var draftRect = null;
       var draftDestinations = [{ title: '', page: 1 }];
+      var draftInfoPosition = null;
       var wrapEl = null;
       var canvasW = 0, canvasH = 0;
       var searchResults = [];
@@ -154,6 +204,7 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
         document.getElementById('nextBtn').disabled = n >= numPages;
         container.innerHTML = '';
         var pageLinks = Array.isArray(PDF_LINKS) ? PDF_LINKS.filter(function(l) { return l.page === n; }) : [];
+        var pageInfoBubbles = Array.isArray(PDF_INFO_BUBBLES) ? PDF_INFO_BUBBLES.filter(function(i) { return i.page === n; }) : [];
         pdfDoc.getPage(n).then(function(p) {
           var v1 = p.getViewport(1);
           var winW = window.innerWidth || 300;
@@ -183,6 +234,15 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
             div.style.height = (r.height * 100) + '%';
             wrapEl.appendChild(div);
           });
+          pageInfoBubbles.forEach(function(infoBubble) {
+            var pos = infoBubble.position || {};
+            var marker = document.createElement('div');
+            marker.className = 'infoBubbleOverlay';
+            marker.style.left = (pos.x * 100) + '%';
+            marker.style.top = (pos.y * 100) + '%';
+            marker.textContent = 'i';
+            wrapEl.appendChild(marker);
+          });
           container.appendChild(wrapEl);
           void canvas.offsetHeight;
           var task = p.render({ canvasContext: ctx, viewport: viewport });
@@ -194,8 +254,30 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
 
       function setupDraw() {
         if (!wrapEl) return;
-        wrapEl.onmousedown = addMode ? onDrawStart : null;
-        wrapEl.ontouchstart = addMode ? function(e) { e.preventDefault(); onDrawStart(e.touches[0]); } : null;
+        if (addMode) {
+          wrapEl.onmousedown = onDrawStart;
+          wrapEl.ontouchstart = function(e) { e.preventDefault(); onDrawStart(e.touches[0]); };
+          return;
+        }
+        if (infoMode) {
+          wrapEl.onmousedown = onInfoTap;
+          wrapEl.ontouchstart = function(e) { e.preventDefault(); onInfoTap(e.touches[0]); };
+          return;
+        }
+        wrapEl.onmousedown = null;
+        wrapEl.ontouchstart = null;
+      }
+
+      function onInfoTap(ev) {
+        if (!infoMode || !wrapEl) return;
+        var r = wrapEl.getBoundingClientRect();
+        var x = (ev.clientX - r.left) / r.width;
+        var y = (ev.clientY - r.top) / r.height;
+        draftInfoPosition = {
+          x: Math.max(0, Math.min(1, x)),
+          y: Math.max(0, Math.min(1, y))
+        };
+        showInfoForm();
       }
 
       function onDrawStart(ev) {
@@ -291,6 +373,18 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
         });
       }
 
+      function showInfoForm() {
+        if (!draftInfoPosition) return;
+        if (infoFormTitle) {
+          infoFormTitle.textContent = 'معلومة جديدة (صفحة ' + currentPage + ')';
+        }
+        if (infoTextArea) {
+          infoTextArea.value = '';
+          infoTextArea.focus();
+        }
+        infoFormPanel.classList.add('visible');
+      }
+
       function syncDraft() {
         destList.querySelectorAll('.destRow').forEach(function(row, i) {
           var titleInp = row.querySelector('input[data-field="title"]');
@@ -310,9 +404,25 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
 
       addLinkBtn.onclick = function() {
         addMode = !addMode;
+        if (addMode) {
+          infoMode = false;
+          if (addInfoBtn) addInfoBtn.classList.remove('active');
+        }
         addLinkBtn.classList.toggle('active', addMode);
         setupDraw();
       };
+
+      if (addInfoBtn) {
+        addInfoBtn.onclick = function() {
+          infoMode = !infoMode;
+          if (infoMode) {
+            addMode = false;
+            addLinkBtn.classList.remove('active');
+          }
+          addInfoBtn.classList.toggle('active', infoMode);
+          setupDraw();
+        };
+      }
 
       document.getElementById('prevBtn').onclick = function() { if (currentPage > 1) { renderPage(currentPage - 1); notifyPage(currentPage - 1); } };
       document.getElementById('nextBtn').onclick = function() { if (currentPage < numPages) { renderPage(currentPage + 1); notifyPage(currentPage + 1); } };
@@ -603,11 +713,36 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
         }
       };
 
+      document.getElementById('saveInfoBtn').onclick = function() {
+        var text = infoTextArea ? (infoTextArea.value || '').trim() : '';
+        if (!draftInfoPosition) return;
+        if (!text) {
+          alert('أدخل نص المعلومة');
+          return;
+        }
+        var payload = {
+          type: 'infoBubbleSaved',
+          page: currentPage,
+          position: draftInfoPosition,
+          text: text
+        };
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+        }
+        infoFormPanel.classList.remove('visible');
+        draftInfoPosition = null;
+      };
+
       // Update cancel button to handle bulk mode
       document.getElementById('cancelFormBtn').onclick = function() {
         formPanel.classList.remove('visible');
         draftRect = null;
         bulkLinkMode = false;
+      };
+
+      document.getElementById('cancelInfoBtn').onclick = function() {
+        infoFormPanel.classList.remove('visible');
+        draftInfoPosition = null;
       };
     })();
   </script>

@@ -70,6 +70,8 @@ const en = {
     grantPermissions: "Please grant photo library permissions to save QR codes",
     chooseDestination: "Choose destination",
     destinationOption: "{{title}} (Page {{page}})",
+    infoBubbleTitle: "Info",
+    infoBubbleFallback: "No info text available.",
   },
   pdfLinkEditorScreen: {
     title: "PDF Link Editor",

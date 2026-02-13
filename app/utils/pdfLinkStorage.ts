@@ -21,7 +21,20 @@ export interface PdfLink {
   destinations: PdfLinkDestination[]
 }
 
+export interface PdfInfoBubblePosition {
+  x: number
+  y: number
+}
+
+export interface PdfInfoBubble {
+  id: string
+  page: number
+  position: PdfInfoBubblePosition
+  text: string
+}
+
 const STORAGE_PREFIX = "pdfLinks:"
+const INFO_STORAGE_PREFIX = "pdfInfoBubbles:"
 
 /**
  * Loads link metadata for a stored PDF.
@@ -56,4 +69,42 @@ export function addPdfLink(fileId: string, link: Omit<PdfLink, "id">): PdfLink[]
  */
 export function removePdfLinks(fileId: string): void {
   remove(`${STORAGE_PREFIX}${fileId}`)
+}
+
+/**
+ * Loads info bubble metadata for a stored PDF.
+ */
+export function getPdfInfoBubbles(fileId: string): PdfInfoBubble[] | null {
+  return load<PdfInfoBubble[]>(`${INFO_STORAGE_PREFIX}${fileId}`)
+}
+
+/**
+ * Saves info bubble metadata for a stored PDF (replaces existing).
+ */
+export function savePdfInfoBubbles(fileId: string, bubbles: PdfInfoBubble[]): boolean {
+  return save(`${INFO_STORAGE_PREFIX}${fileId}`, bubbles)
+}
+
+/**
+ * Appends an info bubble and saves. Returns the updated list or null on failure.
+ */
+export function addPdfInfoBubble(
+  fileId: string,
+  bubble: Omit<PdfInfoBubble, "id">,
+): PdfInfoBubble[] | null {
+  const existing = getPdfInfoBubbles(fileId) ?? []
+  const newBubble: PdfInfoBubble = {
+    ...bubble,
+    id: randomUUID(),
+  }
+  const next = [...existing, newBubble]
+  const ok = savePdfInfoBubbles(fileId, next)
+  return ok ? next : null
+}
+
+/**
+ * Removes info bubble metadata for a file (e.g. when file is deleted).
+ */
+export function removePdfInfoBubbles(fileId: string): void {
+  remove(`${INFO_STORAGE_PREFIX}${fileId}`)
 }

@@ -1,4 +1,4 @@
-import type { PdfLink } from "./pdfLinkStorage"
+import type { PdfInfoBubble, PdfLink } from "./pdfLinkStorage"
 
 /**
  * Generates HTML for the in-app PDF viewer using pdf.js.
@@ -17,14 +17,17 @@ export interface PdfViewerHtmlOptions {
   page: number
   /** Optional link areas for this PDF; overlays shown on the current page. */
   links?: PdfLink[]
+  /** Optional info bubbles to show as "i" markers on the current page. */
+  infoBubbles?: PdfInfoBubble[]
 }
 
 export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
-  const { uri, base64, page, links } = options
+  const { uri, base64, page, links, infoBubbles } = options
   const uriJson = uri != null ? JSON.stringify(uri) : "null"
   const base64Json = base64 != null ? JSON.stringify(base64) : "null"
   const pageNum = Math.max(1, Math.floor(page))
   const linksJson = JSON.stringify(links ?? [])
+  const infoBubblesJson = JSON.stringify(infoBubbles ?? [])
 
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -43,6 +46,26 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
     .pageWrap canvas { display: block; background: #fff; margin: 0; }
     .linkOverlay { position: absolute; cursor: pointer; pointer-events: auto; left: 0; top: 0; background: rgba(100, 150, 255, 0.2); border: 1px solid rgba(100, 150, 255, 0.6); }
     .linkOverlay:hover { background: rgba(100, 150, 255, 0.35); }
+    .infoBubbleOverlay {
+      position: absolute;
+      cursor: pointer;
+      pointer-events: auto;
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      transform: translate(-50%, -50%);
+      background: #2d4a6a;
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      user-select: none;
+    }
+    .infoBubbleOverlay:hover { background: #3f628c; }
     #error { color: #e74c3c; padding: 16px; font-family: system-ui, sans-serif; }
   </style>
 </head>
@@ -64,6 +87,7 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
       var PDF_BASE64 = ${base64Json};
       var PDF_PAGE = ${pageNum};
       var PDF_LINKS = ${linksJson};
+      var PDF_INFO_BUBBLES = ${infoBubblesJson};
 
       var pdfDoc = null;
       var numPages = 0;
@@ -100,6 +124,9 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
         }
         container.innerHTML = '';
         var pageLinks = Array.isArray(PDF_LINKS) ? PDF_LINKS.filter(function(l) { return l.page === n; }) : [];
+        var pageInfoBubbles = Array.isArray(PDF_INFO_BUBBLES)
+          ? PDF_INFO_BUBBLES.filter(function(i) { return i.page === n; })
+          : [];
         pdfDoc.getPage(n).then(function(p) {
           var v1 = p.getViewport(1);
           var winW = window.innerWidth || 300;
@@ -145,6 +172,30 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
               }
             });
             wrap.appendChild(div);
+          }
+          for (var j = 0; j < pageInfoBubbles.length; j++) {
+            var infoBubble = pageInfoBubbles[j];
+            var pos = infoBubble.position || {};
+            var infoDiv = document.createElement('div');
+            infoDiv.className = 'infoBubbleOverlay';
+            infoDiv.style.left = (pos.x * 100) + '%';
+            infoDiv.style.top = (pos.y * 100) + '%';
+            infoDiv.textContent = 'i';
+            infoDiv.dataset.infoId = infoBubble.id;
+            infoDiv.addEventListener('click', function(ev) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              var id = this.dataset.infoId;
+              var info = pageInfoBubbles.find(function(x) { return x.id === id; });
+              if (info && info.text && window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  type: 'infoBubbleClicked',
+                  infoBubbleId: id,
+                  text: info.text
+                }));
+              }
+            });
+            wrap.appendChild(infoDiv);
           }
           void canvas.offsetHeight;
           var task = p.render({ canvasContext: ctx, viewport: viewport });

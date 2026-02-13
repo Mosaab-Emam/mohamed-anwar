@@ -71,6 +71,8 @@ const ar: Translations = {
     grantPermissions: "يرجى منح أذونات مكتبة الصور لحفظ رموز QR",
     chooseDestination: "اختر الوجهة",
     destinationOption: "{{title}} (صفحة {{page}})",
+    infoBubbleTitle: "معلومة",
+    infoBubbleFallback: "لا يوجد نص معلومة.",
   },
   pdfLinkEditorScreen: {
     title: "محرر روابط PDF",
