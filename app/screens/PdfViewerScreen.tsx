@@ -474,18 +474,21 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
                   navigation.navigate("PdfLinkEditor", { fileId: effectiveFileId ?? undefined })
                 }
                 disabled={!effectiveFileId || isStoring}
-                style={themed($generateQrButton)}
+                style={themed($toolbarButton)}
+                textStyle={themed($toolbarButtonText)}
               />
               <Button
                 tx="pdfViewerScreen:generateQr"
                 onPress={handleGenerateQr}
                 disabled={!effectiveFileId || isStoring}
-                style={themed($generateQrButton)}
+                style={themed($toolbarButton)}
+                textStyle={themed($toolbarButtonText)}
               />
               <Button
                 tx="pdfViewerScreen:selectAnother"
                 onPress={clearAndPickAnother}
-                style={themed($selectAnotherButton)}
+                style={themed($toolbarButton)}
+                textStyle={themed($toolbarButtonText)}
               />
             </View>
           )}
@@ -661,15 +664,28 @@ const $selectButton: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   marginTop: spacing.md,
 })
 
-const $selectAnotherButton: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  marginHorizontal: spacing.lg,
-  marginBottom: spacing.md,
+const $toolbar: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  flexDirection: I18nManager.isRTL ? "row-reverse" : "row",
+  flexShrink: 0,
+  alignItems: "center",
+  justifyContent: "space-evenly",
+  paddingVertical: spacing.xs,
+  paddingHorizontal: spacing.sm,
+  borderTopWidth: StyleSheet.hairlineWidth,
+  borderTopColor: colors.palette.neutral400,
 })
 
-const $toolbar: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  flexShrink: 0,
-  paddingTop: spacing.sm,
-  paddingBottom: spacing.lg,
+const $toolbarButton: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flex: 1,
+  marginHorizontal: spacing.xs,
+  minHeight: 40,
+  paddingVertical: spacing.xs,
+  paddingHorizontal: spacing.sm,
+})
+
+const $toolbarButtonText: ThemedStyle<TextStyle> = ({ typography }) => ({
+  fontSize: 13,
+  fontFamily: typography.primary.medium,
 })
 
 const $loadingText: ThemedStyle<TextStyle> = ({ spacing }) => ({
@@ -680,11 +696,6 @@ const $errorText: ThemedStyle<TextStyle> = ({ colors }) => ({
   color: colors.error,
   marginBottom: 16,
   textAlign: "center",
-})
-
-const $generateQrButton: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  marginHorizontal: spacing.lg,
-  marginBottom: spacing.md,
 })
 
 const $qrModalContent: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
