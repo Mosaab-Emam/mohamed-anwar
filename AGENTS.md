@@ -21,8 +21,8 @@ This file helps AI coding agents become productive quickly in fresh sessions.
 - Navigation: React Navigation (native stack + bottom tabs).
 - PDF rendering/editor UI: `react-native-webview` + inlined `pdf.js` HTML.
 - Storage:
-  - Metadata: MMKV (`react-native-mmkv`).
-  - PDF files: copied into `FileSystem.documentDirectory`.
+  - **PDF library (creator app):** Single portable folder `documentDirectory/PDFLibrary/` with encrypted `manifest.enc` and `{fileId}.pdf.enc` files. AES-256-GCM via `@noble/ciphers`; key derived from fixed salt (see `pdfLibraryCrypto.ts`). Same folder format and key derivation must be used by a consumer app to open exported folders.
+  - Legacy: MMKV (`react-native-mmkv`) and `pdfFileStorage`/`pdfLinkStorage` are superseded by the library for the creator flow.
 - QR:
   - Generation: `react-native-qrcode-svg`.
   - Scanning camera: `expo-camera`.
@@ -41,8 +41,10 @@ This file helps AI coding agents become productive quickly in fresh sessions.
   - `PdfLinkEditorScreen.tsx`: draw link rectangles and save destinations.
   - `QrScannerScreen.tsx`: scan QR and navigate to PDF.
 - `app/utils/`:
-  - `pdfFileStorage.ts`: stable file storage by `fileId`.
-  - `pdfLinkStorage.ts`: persisted link metadata by `fileId`.
+  - `pdfLibraryCrypto.ts`: key derivation (SHA256 of fixed salt), `encryptBytes`/`decryptBytes` for AES-GCM. Consumer app must use same derivation.
+  - `pdfLibraryStorage.ts`: library CRUD, `listLibraryEntries`, `getLibraryEntry`, `addToLibrary`, `updateLibraryEntryLinks`, `getLibraryPdfBase64`, `exportLibraryToDirectory`, `importLibraryFromDirectory`. Android export/import use `StorageAccessFramework`.
+  - `pdfLinkStorage.ts`: types (`PdfLink`, `PdfInfoBubble`, etc.); link/bubble data is stored inside the library manifest.
+  - `pdfFileStorage.ts`: legacy; creator app uses library instead.
   - `parseDeepLinkUrl.ts`: URL contract validation for QR payloads.
   - `pdfViewerHtml.ts` and `pdfEditorHtml.ts`: embedded pdf.js logic + RN bridge messaging.
 - `app/i18n/`: translations (`ar.ts`, `en.ts`) and forced locale setup (`index.ts`).
@@ -52,10 +54,10 @@ This file helps AI coding agents become productive quickly in fresh sessions.
 
 ### 1) PDF open and persist flow
 
-1. User picks PDF from `expo-document-picker`.
-2. App copies picked file to `FileSystem.documentDirectory` using `storePdfFile()`.
-3. File metadata is stored in MMKV under key prefix `pdfFiles:`.
-4. `fileId` becomes the stable identifier used by deep links and QR codes.
+1. User picks PDF from `expo-document-picker` or opens from **Library** (list populated from the encrypted library folder).
+2. Picked file is encrypted and added to the library via `addToLibrary()`; manifest stores `fileId`, name, timestamp, links, info bubbles.
+3. Library lives in `documentDirectory/PDFLibrary/` (`manifest.enc` + `{fileId}.pdf.enc`). Same folder can be exported (Android SAF) and copied to another device; import or consumer app uses same format and key to read.
+4. `fileId` is the stable identifier for deep links and QR codes; resolution is via `getLibraryEntry(fileId)`.
 
 ### 2) PDF rendering flow
 
@@ -68,14 +70,14 @@ This file helps AI coding agents become productive quickly in fresh sessions.
 
 1. Editor mode draws normalized rectangles (`x/y/width/height`, 0-1 scale).
 2. A link stores one or more destinations `{ title, page }`.
-3. Links are saved under MMKV key prefix `pdfLinks:`.
+3. Links and info bubbles are saved in the library manifest via `updateLibraryEntryLinks(fileId, links, infoBubbles)`.
 4. Viewer overlays link regions and asks user to choose destination when tapped.
 
 ### 4) QR deep-link flow
 
 1. Viewer creates URL with current `fileId` + `currentPage`.
 2. QR encodes this URL.
-3. Scanner decodes QR (camera or image), validates payload, checks file existence.
+3. Scanner decodes QR (camera or image), validates payload, checks library for `fileId` (`getLibraryEntry(fileId)`).
 4. App navigates to `PdfViewer` with `{ fileId, page }`.
 
 ## Data contracts you must preserve
@@ -87,9 +89,10 @@ This file helps AI coding agents become productive quickly in fresh sessions.
 - Navigation param contracts (from `navigationTypes.ts`):
   - `PdfViewer: { uri?: string; fileId?: string; page?: number } | undefined`
   - `PdfLinkEditor: { fileId?: string } | undefined`
-- Storage key prefixes:
-  - Files: `pdfFiles:`
-  - Links: `pdfLinks:`
+- Library folder format (portable; consumer app must match):
+  - `manifest.enc`: encrypted JSON `{ version: 1, entries: [ { fileId, name, timestamp, links, infoBubbles } ] }`.
+  - `{fileId}.pdf.enc`: AES-GCM encrypted PDF bytes. Key: SHA256 of `"mohamed-anwar-pdf-library-v1"` (see `pdfLibraryCrypto.ts`).
+- Legacy storage key prefixes (superseded by library for creator): `pdfFiles:`, `pdfLinks:`, `pdfInfoBubbles:`.
 
 If you change any of these contracts, update:
 - parser (`parseDeepLinkUrl.ts`)
@@ -138,7 +141,7 @@ Run these before finalizing non-trivial changes when feasible.
 When touching PDF/QR features:
 
 1. Update screen logic (`PdfViewerScreen`, `PdfLinkEditorScreen`, `QrScannerScreen`).
-2. Verify utility contracts (`pdfFileStorage`, `pdfLinkStorage`, `parseDeepLinkUrl`).
+2. Verify utility contracts (`pdfLibraryStorage`, `pdfLinkStorage` types, `parseDeepLinkUrl`).
 3. Ensure navigation params remain type-safe.
 4. Update both `ar.ts` and `en.ts` for any new strings.
 5. Run typecheck/lint/tests if possible.

@@ -14,7 +14,7 @@ import { useAppTheme } from "@/theme/context"
 import { $styles } from "@/theme/styles"
 import type { ThemedStyle } from "@/theme/types"
 import { parseDeepLinkUrl } from "@/utils/parseDeepLinkUrl"
-import { getPdfFile } from "@/utils/pdfFileStorage"
+import { getLibraryEntry } from "@/utils/pdfLibraryStorage"
 import { useHeader } from "@/utils/useHeader"
 
 export const QrScannerScreen: FC<DemoTabScreenProps<"QrScanner">> = (props) => {
@@ -55,9 +55,9 @@ export const QrScannerScreen: FC<DemoTabScreenProps<"QrScanner">> = (props) => {
           return
         }
 
-        // Verify file exists
-        const storedFile = getPdfFile(parsed.fileId)
-        if (!storedFile) {
+        // Verify file exists in library
+        const entry = await getLibraryEntry(parsed.fileId)
+        if (!entry) {
           setError(translate("qrScannerScreen:noFileFound"))
           setIsScanning(false)
           return

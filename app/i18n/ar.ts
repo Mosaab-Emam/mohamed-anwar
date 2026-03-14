@@ -78,6 +78,12 @@ const ar: Translations = {
     closeTab: "إغلاق التبويب",
     infoBubbleTitle: "معلومة",
     infoBubbleFallback: "لا يوجد نص معلومة.",
+    openFromLibrary: "فتح من المكتبة",
+    exportLibrary: "تصدير المكتبة",
+    exportThisPdf: "تصدير هذا PDF",
+    importLibrary: "استيراد المكتبة",
+    libraryTitle: "المكتبة",
+    libraryEmpty: "لا توجد ملفات PDF في المكتبة. أضف واحداً باختيار ملف PDF.",
   },
   pdfLinkEditorScreen: {
     title: "محرر روابط PDF",

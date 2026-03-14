@@ -1,5 +1,6 @@
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ActivityIndicator, Platform, TextStyle, View, ViewStyle } from "react-native"
+import { randomUUID } from "expo-crypto"
 import * as DocumentPicker from "expo-document-picker"
 import * as FileSystem from "expo-file-system/legacy"
 import { WebView } from "react-native-webview"
@@ -14,15 +15,13 @@ import { useAppTheme } from "@/theme/context"
 import { $styles } from "@/theme/styles"
 import type { ThemedStyle } from "@/theme/types"
 import { getPdfEditorHtml } from "@/utils/pdfEditorHtml"
-import { getPdfFile, storePdfFile } from "@/utils/pdfFileStorage"
 import {
-  addPdfInfoBubble,
-  addPdfLink,
-  getPdfInfoBubbles,
-  getPdfLinks,
-  type PdfInfoBubble,
-  type PdfLink,
-} from "@/utils/pdfLinkStorage"
+  addToLibrary,
+  getLibraryEntry,
+  getLibraryPdfBase64,
+  updateLibraryEntryLinks,
+} from "@/utils/pdfLibraryStorage"
+import type { PdfInfoBubble, PdfLink } from "@/utils/pdfLinkStorage"
 import { useHeader } from "@/utils/useHeader"
 
 type PickedFile = { uri: string; name: string }
@@ -56,25 +55,62 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
 
   useEffect(() => {
     if (!fileIdFromParams) return
-    const stored = getPdfFile(fileIdFromParams)
-    if (stored) {
-      const links = getPdfLinks(fileIdFromParams) ?? []
-      const infoBubbles = getPdfInfoBubbles(fileIdFromParams) ?? []
-      setPicked({ uri: stored.uri, name: stored.name })
-      setFileId(fileIdFromParams)
-      setEditorLinks(links)
-      setEditorInfoBubbles(infoBubbles)
-      setBase64(null)
-      setBase64Error(null)
-      pageForLoadRef.current = 1
-    } else {
-      setBase64Error(translate("pdfViewerScreen:fileNotFound"))
-      setPicked(null)
-      setFileId(null)
-      setEditorLinks([])
-      setEditorInfoBubbles([])
+    let cancelled = false
+    getLibraryEntry(fileIdFromParams).then((entry) => {
+      if (cancelled) return
+      if (entry) {
+        setFileId(fileIdFromParams)
+        setEditorLinks(entry.links ?? [])
+        setEditorInfoBubbles(entry.infoBubbles ?? [])
+        setPicked({ uri: "", name: entry.name })
+        setBase64(null)
+        setBase64Error(null)
+        pageForLoadRef.current = 1
+      } else {
+        setBase64Error(translate("pdfViewerScreen:fileNotFound"))
+        setPicked(null)
+        setFileId(null)
+        setEditorLinks([])
+        setEditorInfoBubbles([])
+      }
+    })
+    return () => {
+      cancelled = true
     }
   }, [fileIdFromParams])
+
+  useEffect(() => {
+    if (!fileId) return
+    let cancelled = false
+    setBase64Error(null)
+    getLibraryPdfBase64(fileId).then((b64) => {
+      if (cancelled) return
+      if (b64) setBase64(b64)
+      else setBase64Error(translate("pdfViewerScreen:fileNotFound"))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [fileId])
+
+  useEffect(() => {
+    if (fileIdFromParams || fileId || !uri || !isLocal) return
+    const storeFile = async () => {
+      setIsStoring(true)
+      try {
+        const storedFileId = await addToLibrary(uri, picked?.name ?? "document.pdf")
+        setFileId(storedFileId)
+        setEditorLinks([])
+        setEditorInfoBubbles([])
+      } catch (e) {
+        console.warn("Failed to add PDF to library:", e)
+        setBase64Error(e instanceof Error ? e.message : "Failed to add to library")
+      } finally {
+        setIsStoring(false)
+      }
+    }
+    storeFile()
+  }, [uri, isLocal, picked?.name, fileIdFromParams, fileId])
 
   useEffect(() => {
     if (!fileId || !uri || !isLocal) return
@@ -91,24 +127,6 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
       cancelled = true
     }
   }, [isLocal, uri, fileId])
-
-  useEffect(() => {
-    if (fileIdFromParams || fileId || !uri || !isLocal) return
-    const storeFile = async () => {
-      setIsStoring(true)
-      try {
-        const storedFileId = await storePdfFile(uri, picked?.name ?? "document.pdf")
-        setFileId(storedFileId)
-        setEditorLinks(getPdfLinks(storedFileId) ?? [])
-        setEditorInfoBubbles(getPdfInfoBubbles(storedFileId) ?? [])
-      } catch (e) {
-        console.warn("Failed to store file for editor:", e)
-      } finally {
-        setIsStoring(false)
-      }
-    }
-    storeFile()
-  }, [uri, isLocal, picked?.name, fileIdFromParams, fileId])
 
   const pickDocument = useCallback(async () => {
     try {
@@ -153,8 +171,15 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
             destinations.length > 0
           ) {
             pageForLoadRef.current = editorPage
-            addPdfLink(fileId, { page, rect, destinations })
-            setEditorLinks(getPdfLinks(fileId) ?? [])
+            const newLink: PdfLink = {
+              id: randomUUID(),
+              page,
+              rect,
+              destinations,
+            }
+            const newLinks = [...editorLinks, newLink]
+            setEditorLinks(newLinks)
+            updateLibraryEntryLinks(fileId, newLinks, editorInfoBubbles)
           }
         }
         if (message.type === "infoBubbleSaved" && fileId) {
@@ -168,19 +193,22 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
             text.trim().length > 0
           ) {
             pageForLoadRef.current = editorPage
-            addPdfInfoBubble(fileId, {
+            const newBubble: PdfInfoBubble = {
+              id: randomUUID(),
               page,
               position: {
                 x: Math.max(0, Math.min(1, position.x)),
                 y: Math.max(0, Math.min(1, position.y)),
               },
               text: text.trim(),
-            })
-            setEditorInfoBubbles(getPdfInfoBubbles(fileId) ?? [])
+            }
+            const newBubbles = [...editorInfoBubbles, newBubble]
+            setEditorInfoBubbles(newBubbles)
+            updateLibraryEntryLinks(fileId, editorLinks, newBubbles)
           }
         }
-        // Handle bulk links saved - don't update state until user dismisses the result modal
         if (message.type === "bulkLinksSaved" && fileId && Array.isArray(message.links)) {
+          const added: PdfLink[] = []
           for (const link of message.links) {
             const { page, rect, destinations } = link
             if (
@@ -193,42 +221,45 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
               Array.isArray(destinations) &&
               destinations.length > 0
             ) {
-              addPdfLink(fileId, { page, rect, destinations })
+              added.push({
+                id: randomUUID(),
+                page,
+                rect,
+                destinations,
+              })
             }
           }
-          // Don't call setEditorLinks here - let the WebView show the result first
-          // The links will be visible when the page is refreshed or user navigates away
+          if (added.length > 0) {
+            const newLinks = [...editorLinks, ...added]
+            setEditorLinks(newLinks)
+            updateLibraryEntryLinks(fileId, newLinks, editorInfoBubbles)
+          }
         }
-        // Handle bulk result dismissed - now safe to update the editor links
         if (message.type === "bulkResultDismissed" && fileId) {
           pageForLoadRef.current = editorPage
-          setEditorLinks(getPdfLinks(fileId) ?? [])
-          setEditorInfoBubbles(getPdfInfoBubbles(fileId) ?? [])
         }
       } catch {
         // Ignore parse errors
       }
     },
-    [fileId, editorPage],
+    [fileId, editorPage, editorLinks, editorInfoBubbles],
   )
 
   const html = useMemo(() => {
-    if (!base64 && !uri) return null
-    if (isLocal && !base64 && !base64Error) return null
-    if (isLocal && base64Error) return null
+    if (!base64) return null
+    if (base64Error) return null
     return getPdfEditorHtml({
-      base64: isLocal && base64 ? base64 : undefined,
+      base64,
       page: pageForLoadRef.current,
       links: editorLinks,
       infoBubbles: editorInfoBubbles,
     })
-  }, [uri, base64, base64Error, isLocal, editorLinks, editorInfoBubbles])
+  }, [base64, base64Error, editorLinks, editorInfoBubbles])
 
   const isLoadingBase64 =
-    (fileIdFromParams != null && !picked) ||
-    (isLocal && uri != null && base64 == null && base64Error == null)
+    (fileId != null || fileIdFromParams != null) && base64 == null && base64Error == null
   const showEditor = html != null && fileId != null && !isLoadingBase64 && !base64Error
-  const showEmpty = uri == null && !fileIdFromParams && !isLoadingBase64 && !isStoring
+  const showEmpty = !fileId && !fileIdFromParams && !isLoadingBase64 && !isStoring
 
   if (Platform.OS === "web") {
     return (

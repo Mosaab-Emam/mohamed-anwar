@@ -77,6 +77,12 @@ const en = {
     closeTab: "Close tab",
     infoBubbleTitle: "Info",
     infoBubbleFallback: "No info text available.",
+    openFromLibrary: "Open from library",
+    exportLibrary: "Export library",
+    exportThisPdf: "Export this PDF",
+    importLibrary: "Import library",
+    libraryTitle: "Library",
+    libraryEmpty: "No PDFs in library. Add one by selecting a PDF.",
   },
   pdfLinkEditorScreen: {
     title: "PDF Link Editor",

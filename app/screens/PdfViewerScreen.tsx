@@ -1,7 +1,3 @@
-import { useFocusEffect } from "@react-navigation/native"
-import * as DocumentPicker from "expo-document-picker"
-import * as FileSystem from "expo-file-system/legacy"
-import * as MediaLibrary from "expo-media-library"
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
@@ -17,6 +13,10 @@ import {
   View,
   ViewStyle,
 } from "react-native"
+import * as DocumentPicker from "expo-document-picker"
+import * as MediaLibrary from "expo-media-library"
+import { useFocusEffect } from "@react-navigation/native"
+import * as FileSystem from "expo-file-system/legacy"
 import QRCode from "react-native-qrcode-svg"
 import { WebView } from "react-native-webview"
 
@@ -31,9 +31,17 @@ import { PdfStackScreenProps } from "@/navigators/navigationTypes"
 import { useAppTheme } from "@/theme/context"
 import { $styles } from "@/theme/styles"
 import type { ThemedStyle } from "@/theme/types"
-import { getPdfFile, storePdfFile } from "@/utils/pdfFileStorage"
-import type { PdfInfoBubble, PdfLinkDestination } from "@/utils/pdfLinkStorage"
-import { getPdfInfoBubbles, getPdfLinks } from "@/utils/pdfLinkStorage"
+import {
+  addToLibrary,
+  exportLibraryEntryToDirectory,
+  exportLibraryToDirectory,
+  getLibraryEntry,
+  getLibraryPdfBase64,
+  importLibraryFromDirectory,
+  listLibraryEntries,
+} from "@/utils/pdfLibraryStorage"
+import type { LibraryEntryMeta } from "@/utils/pdfLibraryStorage"
+import type { PdfInfoBubble, PdfLink, PdfLinkDestination } from "@/utils/pdfLinkStorage"
 import { getPdfViewerHtml } from "@/utils/pdfViewerHtml"
 import { useHeader } from "@/utils/useHeader"
 
@@ -42,16 +50,8 @@ type PickedFile = { uri: string; name: string }
 export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
   const { route, navigation } = props
   const { themed, theme } = useAppTheme()
-  const {
-    tabs,
-    activeTabId,
-    addTab,
-    removeTab,
-    setActiveTab,
-    openInCurrentTab,
-    updateActiveTabPage,
-    clearAllTabs,
-  } = usePdfTabs()
+  const { tabs, activeTabId, addTab, removeTab, setActiveTab, updateActiveTabPage, clearAllTabs } =
+    usePdfTabs()
 
   const activeTab = useMemo(
     () => (activeTabId ? (tabs.find((t) => t.id === activeTabId) ?? null) : null),
@@ -78,19 +78,20 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
   const [destinationChoices, setDestinationChoices] = useState<PdfLinkDestination[] | null>(null)
   const [infoBubbleModalVisible, setInfoBubbleModalVisible] = useState(false)
   const [selectedInfoBubble, setSelectedInfoBubble] = useState<PdfInfoBubble | null>(null)
+  const [libraryModalVisible, setLibraryModalVisible] = useState(false)
+  const [libraryEntries, setLibraryEntries] = useState<LibraryEntryMeta[]>([])
+  const [libraryListLoading, setLibraryListLoading] = useState(false)
+  const [exportImportError, setExportImportError] = useState<string | null>(null)
 
   const { height: windowHeight } = useWindowDimensions()
   const effectiveFileId = activeTab?.fileId ?? fileId
   const effectivePage = activeTab != null ? activeTab.page : currentPage
 
-  const pdfLinks = useMemo(() => {
-    void linksRefreshKey
-    return effectiveFileId ? (getPdfLinks(effectiveFileId) ?? []) : []
-  }, [effectiveFileId, linksRefreshKey])
-  const pdfInfoBubbles = useMemo(() => {
-    void linksRefreshKey
-    return effectiveFileId ? (getPdfInfoBubbles(effectiveFileId) ?? []) : []
-  }, [effectiveFileId, linksRefreshKey])
+  const [libraryLinks, setLibraryLinks] = useState<PdfLink[]>([])
+  const [libraryBubbles, setLibraryBubbles] = useState<PdfInfoBubble[]>([])
+
+  const pdfLinks = libraryLinks
+  const pdfInfoBubbles = libraryBubbles
 
   useFocusEffect(
     useCallback(() => {
@@ -111,6 +112,7 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
   const page = effectivePage
 
   const isLocal = useMemo(() => uri != null && uri.startsWith("file://"), [uri])
+  const isFromLibrary = effectiveFileId != null && uri == null
 
   // Only clear local state when user closed the last tab (had tabs, now none).
   // Do NOT clear when tabs.length === 0 and user just picked a file (we need picked to store and add first tab).
@@ -127,33 +129,64 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
     }
   }, [tabs.length])
 
-  // Sync picked/fileId from active tab when tab-driven.
-  // Only update (and clear base64) when the stored URI actually differs from current picked,
-  // so redundant runs (same tab, new object reference) don't wipe base64 and cause stuck loading.
+  // Load links/bubbles/name from library when effectiveFileId or linksRefreshKey changes
   useEffect(() => {
-    if (activeTab) {
-      const stored = getPdfFile(activeTab.fileId)
-      const uriChanged = stored && stored.uri !== picked?.uri
-      if (stored && uriChanged) {
-        setPicked({ uri: stored.uri, name: stored.name })
-        setFileId(activeTab.fileId)
-        setBase64(null)
-        setBase64Error(null)
-      } else if (!stored) {
-        setBase64Error(translate("pdfViewerScreen:fileNotFound"))
-      }
+    if (!effectiveFileId) {
+      setLibraryLinks([])
+      setLibraryBubbles([])
+      return
     }
-  }, [activeTab, picked?.uri])
+    let cancelled = false
+    getLibraryEntry(effectiveFileId).then((entry) => {
+      if (cancelled) return
+      if (entry) {
+        setLibraryLinks(entry.links ?? [])
+        setLibraryBubbles(entry.infoBubbles ?? [])
+      } else {
+        setLibraryLinks([])
+        setLibraryBubbles([])
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [effectiveFileId, linksRefreshKey])
 
-  // Deep link / QR: add a tab for params and clear params
+  // Sync from active tab when tab-driven: load PDF from library
+  useEffect(() => {
+    if (!activeTab) return
+    const tid = activeTab.fileId
+    setFileId(tid)
+    setPicked(null)
+    setBase64(null)
+    setBase64Error(null)
+    let cancelled = false
+    getLibraryPdfBase64(tid).then((b64) => {
+      if (cancelled) return
+      if (b64) setBase64(b64)
+      else setBase64Error(translate("pdfViewerScreen:fileNotFound"))
+    })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync when tab changes; full activeTab would cause redundant reloads
+  }, [activeTab?.id, activeTab?.fileId])
+
+  // Deep link / QR: resolve fileId from library and add tab
   useEffect(() => {
     if (!fileIdFromParams || !pageFromParams) return
-    const stored = getPdfFile(fileIdFromParams)
-    if (stored) {
-      addTab({ fileId: fileIdFromParams, page: pageFromParams })
-      navigation.setParams({ uri: undefined, fileId: undefined, page: undefined } as object)
-    } else {
-      setBase64Error(translate("pdfViewerScreen:fileNotFound"))
+    let cancelled = false
+    getLibraryEntry(fileIdFromParams).then((entry) => {
+      if (cancelled) return
+      if (entry) {
+        addTab({ fileId: fileIdFromParams, page: pageFromParams })
+        navigation.setParams({ uri: undefined, fileId: undefined, page: undefined } as object)
+      } else {
+        setBase64Error(translate("pdfViewerScreen:fileNotFound"))
+      }
+    })
+    return () => {
+      cancelled = true
     }
   }, [fileIdFromParams, pageFromParams, addTab, navigation])
 
@@ -164,18 +197,18 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
     }
   }, [tabs.length, fileId, picked, addTab])
 
-  // Store file when picked (for QR code generation)
+  // Add picked file to library (encrypted) when user picks a new PDF
   useEffect(() => {
     if (fileIdFromParams || fileId || !uri || !isLocal) return
 
     const storeFile = async () => {
       setIsStoring(true)
       try {
-        const storedFileId = await storePdfFile(uri, picked?.name ?? "document.pdf")
+        const storedFileId = await addToLibrary(uri, picked?.name ?? "document.pdf")
         setFileId(storedFileId)
       } catch (e) {
-        // Silently fail - QR generation will handle this
-        console.warn("Failed to store file for QR:", e)
+        console.warn("Failed to add PDF to library:", e)
+        setBase64Error(e instanceof Error ? e.message : "Failed to add to library")
       } finally {
         setIsStoring(false)
       }
@@ -228,6 +261,69 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
     setCurrentPage(1)
     navigation.setParams({ uri: undefined, fileId: undefined, page: undefined } as object)
   }, [navigation, clearAllTabs])
+
+  useEffect(() => {
+    if (!libraryModalVisible) return
+    setLibraryListLoading(true)
+    listLibraryEntries()
+      .then((entries) => setLibraryEntries(entries))
+      .catch(() => setLibraryEntries([]))
+      .finally(() => setLibraryListLoading(false))
+  }, [libraryModalVisible])
+
+  const openFromLibrary = useCallback(
+    (entry: LibraryEntryMeta) => {
+      setLibraryModalVisible(false)
+      addTab({ fileId: entry.fileId, page: 1, title: entry.name })
+    },
+    [addTab],
+  )
+
+  const handleExportLibrary = useCallback(async () => {
+    if (Platform.OS !== "android") return
+    setExportImportError(null)
+    try {
+      const { StorageAccessFramework } = FileSystem
+      const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync()
+      if (!permissions.granted || !permissions.directoryUri) {
+        return
+      }
+      await exportLibraryToDirectory(permissions.directoryUri)
+    } catch (e) {
+      setExportImportError(e instanceof Error ? e.message : "Export failed")
+    }
+  }, [])
+
+  const handleImportLibrary = useCallback(async () => {
+    if (Platform.OS !== "android") return
+    setExportImportError(null)
+    try {
+      const { StorageAccessFramework } = FileSystem
+      const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync()
+      if (!permissions.granted || !permissions.directoryUri) {
+        return
+      }
+      await importLibraryFromDirectory(permissions.directoryUri)
+      setLibraryModalVisible(true)
+    } catch (e) {
+      setExportImportError(e instanceof Error ? e.message : "Import failed")
+    }
+  }, [])
+
+  const handleExportThisPdf = useCallback(async () => {
+    if (Platform.OS !== "android" || !effectiveFileId) return
+    setExportImportError(null)
+    try {
+      const { StorageAccessFramework } = FileSystem
+      const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync()
+      if (!permissions.granted || !permissions.directoryUri) {
+        return
+      }
+      await exportLibraryEntryToDirectory(effectiveFileId, permissions.directoryUri)
+    } catch (e) {
+      setExportImportError(e instanceof Error ? e.message : "Export failed")
+    }
+  }, [effectiveFileId])
 
   const handleWebViewMessage = useCallback(
     (event: { nativeEvent: { data: string } }) => {
@@ -337,20 +433,20 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
   }, [])
 
   const html = useMemo(() => {
-    if (!uri && !base64) return null
-    if (isLocal && !base64 && !base64Error) return null
-    if (isLocal && base64Error) return null
+    if (!base64) return null
+    if (base64Error) return null
     return getPdfViewerHtml({
-      base64: isLocal && base64 ? base64 : undefined,
+      base64,
       page,
       links: pdfLinks.length > 0 ? pdfLinks : undefined,
       infoBubbles: pdfInfoBubbles.length > 0 ? pdfInfoBubbles : undefined,
     })
-  }, [uri, base64, base64Error, isLocal, page, pdfLinks, pdfInfoBubbles])
+  }, [base64, base64Error, page, pdfLinks, pdfInfoBubbles])
 
-  const isLoadingBase64 = isLocal && uri != null && base64 == null && base64Error == null
+  const isLoadingBase64 =
+    ((isLocal && uri != null) || isFromLibrary) && base64 == null && base64Error == null
   const showViewer = html != null && !isLoadingBase64
-  const showEmpty = uri == null && !isLoadingBase64 && !isStoring
+  const showEmpty = tabs.length === 0 && picked == null && !isLoadingBase64 && !isStoring
 
   if (Platform.OS === "web") {
     return (
@@ -378,8 +474,94 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
             buttonTx="pdfViewerScreen:selectPdf"
             buttonOnPress={pickDocument}
           />
+          <Button
+            tx="pdfViewerScreen:openFromLibrary"
+            onPress={() => setLibraryModalVisible(true)}
+            style={themed($libraryButton)}
+            textStyle={themed($toolbarButtonText)}
+          />
+          {Platform.OS === "android" && (
+            <View style={themed($libraryActionsRow)}>
+              <Button
+                tx="pdfViewerScreen:exportLibrary"
+                onPress={handleExportLibrary}
+                style={themed($libraryActionButton)}
+                textStyle={themed($toolbarButtonText)}
+              />
+              <Button
+                tx="pdfViewerScreen:importLibrary"
+                onPress={handleImportLibrary}
+                style={themed($libraryActionButton)}
+                textStyle={themed($toolbarButtonText)}
+              />
+            </View>
+          )}
+          {exportImportError != null && (
+            <Text text={exportImportError} style={themed($errorText)} />
+          )}
         </View>
       )}
+
+      <Modal
+        visible={libraryModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLibraryModalVisible(false)}
+      >
+        <TouchableOpacity
+          activeOpacity={1}
+          style={[styles.modalOverlay, themed($modalOverlay)]}
+          onPress={() => setLibraryModalVisible(false)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+            style={styles.destinationModalWrapper}
+          >
+            <View style={themed($destinationModalContent)}>
+              <Text
+                preset="heading"
+                tx="pdfViewerScreen:libraryTitle"
+                style={themed($destinationModalTitle)}
+              />
+              {libraryListLoading ? (
+                <ActivityIndicator size="large" style={themed($libraryListLoading)} />
+              ) : libraryEntries.length === 0 ? (
+                <Text tx="pdfViewerScreen:libraryEmpty" style={themed($libraryEmptyText)} />
+              ) : (
+                <FlatList
+                  data={libraryEntries}
+                  keyExtractor={(item) => item.fileId}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={themed($destinationItem)}
+                      onPress={() => openFromLibrary(item)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        text={item.name}
+                        preset="default"
+                        style={themed($destinationItemText)}
+                        numberOfLines={2}
+                      />
+                    </TouchableOpacity>
+                  )}
+                  style={[
+                    themed($destinationList),
+                    // eslint-disable-next-line react-native/no-inline-styles -- dynamic maxHeight from windowHeight
+                    { minHeight: 160, maxHeight: Math.round(windowHeight * 0.6) },
+                  ]}
+                />
+              )}
+              <Button
+                tx="pdfViewerScreen:close"
+                onPress={() => setLibraryModalVisible(false)}
+                style={themed($cancelQrButton)}
+              />
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {isLoadingBase64 && (
         <View style={[styles.centered, themed($emptyContainer)]}>
@@ -426,8 +608,7 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
                   <View style={themed($tabChipLabelWrap)}>
                     <Text
                       text={
-                        tab.title ??
-                        translate("pdfViewerScreen:tabPageLabel", { page: tab.page })
+                        tab.title ?? translate("pdfViewerScreen:tabPageLabel", { page: tab.page })
                       }
                       preset="default"
                       style={themed($tabChipText)}
@@ -481,11 +662,21 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
                 textStyle={themed($toolbarButtonText)}
               />
               <Button
+                tx="pdfViewerScreen:exportThisPdf"
+                onPress={handleExportThisPdf}
+                disabled={!effectiveFileId || isStoring}
+                style={themed($toolbarButton)}
+                textStyle={themed($toolbarButtonText)}
+              />
+              <Button
                 tx="pdfViewerScreen:selectAnother"
                 onPress={clearAndPickAnother}
                 style={themed($toolbarButton)}
                 textStyle={themed($toolbarButtonText)}
               />
+              {exportImportError != null && (
+                <Text text={exportImportError} style={themed($errorText)} />
+              )}
             </View>
           )}
         </View>
@@ -534,10 +725,8 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
                 )}
                 style={[
                   themed($destinationList),
-                  {
-                    minHeight: 160,
-                    maxHeight: Math.round(windowHeight * 0.6),
-                  },
+                  // eslint-disable-next-line react-native/no-inline-styles -- dynamic maxHeight from windowHeight
+                  { minHeight: 160, maxHeight: Math.round(windowHeight * 0.6) },
                 ]}
               />
               <Button
@@ -636,16 +825,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 24,
   },
+  destinationModalWrapper: {
+    alignSelf: "stretch",
+    maxWidth: 400,
+    width: "100%",
+  },
   modalOverlay: {
     alignItems: "center",
     flex: 1,
     justifyContent: "center",
     padding: 24,
-  },
-  destinationModalWrapper: {
-    width: "100%",
-    maxWidth: 400,
-    alignSelf: "stretch",
   },
 })
 
@@ -661,6 +850,32 @@ const $emptyContainer: ThemedStyle<ViewStyle> = ({ spacing }) => ({
 
 const $emptyState: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   marginBottom: spacing.lg,
+})
+
+const $libraryButton: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  marginTop: spacing.md,
+  minHeight: 40,
+})
+
+const $libraryActionsRow: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flexDirection: I18nManager.isRTL ? "row-reverse" : "row",
+  marginTop: spacing.sm,
+  gap: spacing.sm,
+})
+
+const $libraryActionButton: ThemedStyle<ViewStyle> = ({ spacing: _spacing }) => ({
+  flex: 1,
+  minHeight: 40,
+})
+
+const $libraryListLoading: ThemedStyle<ViewStyle> = ({ spacing: _spacing }) => ({
+  marginVertical: _spacing.xl,
+})
+
+const $libraryEmptyText: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
+  color: colors.text,
+  marginBottom: spacing.lg,
+  textAlign: "center",
 })
 
 const $selectButton: ThemedStyle<ViewStyle> = ({ spacing }) => ({
