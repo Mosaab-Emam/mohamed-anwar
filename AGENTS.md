@@ -5,6 +5,7 @@ This file helps AI coding agents become productive quickly in fresh sessions.
 ## Project at a glance
 
 - Type: React Native mobile app (Expo + Ignite boilerplate).
+- **Platform: Android only.** Do not add or optimize for iOS or web; the app targets Android.
 - Main product features today:
   - View local PDF files.
   - Add custom tappable links on top of PDF pages.

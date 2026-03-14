@@ -5,14 +5,17 @@ import * as MediaLibrary from "expo-media-library"
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
-  FlatList, I18nManager, Modal,
+  FlatList,
+  I18nManager,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
   TextStyle,
   TouchableOpacity,
+  useWindowDimensions,
   View,
-  ViewStyle
+  ViewStyle,
 } from "react-native"
 import QRCode from "react-native-qrcode-svg"
 import { WebView } from "react-native-webview"
@@ -76,6 +79,7 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
   const [infoBubbleModalVisible, setInfoBubbleModalVisible] = useState(false)
   const [selectedInfoBubble, setSelectedInfoBubble] = useState<PdfInfoBubble | null>(null)
 
+  const { height: windowHeight } = useWindowDimensions()
   const effectiveFileId = activeTab?.fileId ?? fileId
   const effectivePage = activeTab != null ? activeTab.page : currentPage
 
@@ -267,18 +271,6 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
     setSelectedInfoBubble(null)
   }, [])
 
-  const selectDestination = useCallback(
-    (d: PdfLinkDestination) => {
-      if (effectiveFileId != null) {
-        openInCurrentTab(effectiveFileId, d.page)
-      }
-      setCurrentPage(d.page)
-      webViewRef.current?.injectJavaScript(`window.goToPage(${d.page}); true;`)
-      closeDestinationModal()
-    },
-    [closeDestinationModal, effectiveFileId, openInCurrentTab],
-  )
-
   const openDestinationInNewTab = useCallback(
     (d: PdfLinkDestination) => {
       if (effectiveFileId != null) {
@@ -371,7 +363,11 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
   }
 
   return (
-    <Screen preset="fixed" contentContainerStyle={$styles.flex1}>
+    <Screen
+      preset="fixed"
+      contentContainerStyle={$styles.flex1}
+      safeAreaEdges={tabs.length > 1 ? [] : ["top"]}
+    >
       {showEmpty && (
         <View style={[styles.centered, themed($emptyContainer)]}>
           <EmptyState
@@ -506,7 +502,11 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
           style={[styles.modalOverlay, themed($modalOverlay)]}
           onPress={closeDestinationModal}
         >
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+            style={styles.destinationModalWrapper}
+          >
             <View style={themed($destinationModalContent)}>
               <Text
                 preset="heading"
@@ -517,7 +517,11 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
                 data={destinationChoices ?? []}
                 keyExtractor={(item, index) => `${item.page}-${item.title}-${index}`}
                 renderItem={({ item }) => (
-                  <View style={themed($destinationItem)}>
+                  <TouchableOpacity
+                    style={themed($destinationItem)}
+                    onPress={() => openDestinationInNewTab(item)}
+                    activeOpacity={0.7}
+                  >
                     <Text
                       text={translate("pdfViewerScreen:destinationOption", {
                         title: item.title,
@@ -526,24 +530,18 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
                       preset="default"
                       style={themed($destinationItemText)}
                     />
-                    <View style={themed($destinationItemActions)}>
-                      <Button
-                        tx="pdfViewerScreen:openInNewTab"
-                        onPress={() => openDestinationInNewTab(item)}
-                        style={themed($destinationActionButton)}
-                      />
-                      <Button
-                        tx="pdfViewerScreen:openInCurrentTab"
-                        onPress={() => selectDestination(item)}
-                        style={themed($destinationActionButton)}
-                      />
-                    </View>
-                  </View>
+                  </TouchableOpacity>
                 )}
-                style={themed($destinationList)}
+                style={[
+                  themed($destinationList),
+                  {
+                    minHeight: 160,
+                    maxHeight: Math.round(windowHeight * 0.6),
+                  },
+                ]}
               />
               <Button
-                tx="common:cancel"
+                tx="pdfViewerScreen:close"
                 onPress={closeDestinationModal}
                 style={themed($cancelQrButton)}
               />
@@ -644,6 +642,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 24,
   },
+  destinationModalWrapper: {
+    width: "100%",
+    maxWidth: 400,
+    alignSelf: "stretch",
+  },
 })
 
 const $webview: ThemedStyle<ViewStyle> = ({ colors }) => ({
@@ -741,8 +744,6 @@ const $infoBubbleText: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
 })
 
 const $destinationList: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  minHeight: 440,
-  maxHeight: 520,
   marginBottom: spacing.md,
 })
 
@@ -863,14 +864,4 @@ const $tabCloseIconContainer: ThemedStyle<ViewStyle> = () => ({
   height: 24,
   justifyContent: "center",
   alignItems: "center",
-})
-
-const $destinationItemActions: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  flexDirection: I18nManager.isRTL ? "row-reverse" : "row",
-  gap: spacing.sm,
-  marginTop: spacing.xs,
-})
-
-const $destinationActionButton: ThemedStyle<ViewStyle> = () => ({
-  flex: 1,
 })

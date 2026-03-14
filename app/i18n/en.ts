@@ -69,6 +69,7 @@ const en = {
     storingFile: "Storing file…",
     grantPermissions: "Please grant photo library permissions to save QR codes",
     chooseDestination: "Choose destination",
+    close: "Close",
     destinationOption: "{{title}} (Page {{page}})",
     openInNewTab: "Open in new tab",
     openInCurrentTab: "Open in current tab",

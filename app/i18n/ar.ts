@@ -70,6 +70,7 @@ const ar: Translations = {
     storingFile: "جاري تخزين الملف…",
     grantPermissions: "يرجى منح أذونات مكتبة الصور لحفظ رموز QR",
     chooseDestination: "اختر الوجهة",
+    close: "اغلاق",
     destinationOption: "{{title}} (صفحة {{page}})",
     openInNewTab: "فتح في تبويب جديد",
     openInCurrentTab: "فتح في هذا التبويب",
