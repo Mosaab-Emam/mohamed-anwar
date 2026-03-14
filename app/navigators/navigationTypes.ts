@@ -7,9 +7,9 @@ import {
 } from "@react-navigation/native"
 import { NativeStackScreenProps } from "@react-navigation/native-stack"
 
-// Pdf Stack (nested inside PdfViewer tab) - PdfLinkEditor only accessible via button in PdfViewer
+// Pdf Stack (nested inside PdfViewer tab) - PdfLinkEditor only accessible via button in PdfView
 export type PdfStackParamList = {
-  PdfViewer: { uri?: string; fileId?: string; page?: number } | undefined
+  PdfView: { uri?: string; fileId?: string; page?: number } | undefined
   PdfLinkEditor: { fileId?: string } | undefined
 }
 
@@ -42,7 +42,7 @@ export type DemoTabScreenProps<T extends keyof DemoTabParamList> = CompositeScre
   AppStackScreenProps<keyof AppStackParamList>
 >
 
-// Screens inside PdfStack (PdfViewer, PdfLinkEditor)
+// Screens inside PdfStack (PdfView, PdfLinkEditor)
 export type PdfStackScreenProps<T extends keyof PdfStackParamList> = CompositeScreenProps<
   NativeStackScreenProps<PdfStackParamList, T>,
   CompositeScreenProps<

@@ -23,9 +23,9 @@ export function PdfStackNavigator() {
         headerShown: false,
         contentStyle: { backgroundColor: colors.background },
       }}
-      initialRouteName="PdfViewer"
+      initialRouteName="PdfView"
     >
-      <Stack.Screen name="PdfViewer" component={PdfViewerScreen} />
+      <Stack.Screen name="PdfView" component={PdfViewerScreen} />
       <Stack.Screen name="PdfLinkEditor" component={PdfLinkEditorScreen} />
     </Stack.Navigator>
   )

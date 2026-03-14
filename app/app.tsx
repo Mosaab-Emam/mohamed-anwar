@@ -55,7 +55,7 @@ const config = {
             page: (page: string) => parseInt(page, 10) || 1,
           },
           screens: {
-            PdfViewer: "",
+            PdfView: "",
             PdfLinkEditor: "links",
           },
         },

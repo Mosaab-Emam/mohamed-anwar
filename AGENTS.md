@@ -112,6 +112,17 @@ If you change any of these contracts, update:
 - Current product flow assumes locally stored PDFs for QR deep links.
 - There is still Ignite boilerplate in the repo (Demo/Auth screens), but primary entry route is `Demo`.
 
+## Debug instrumentation
+
+When adding runtime logging (e.g. for Cursor debug mode or bug investigation):
+
+- **Use HTTP only.** Send log payloads via `fetch` POST to the debug server endpoint provided in the session. Do not write log files from the app: `expo-file-system/legacy` does not expose `appendAsStringAsync`; using it will throw at runtime.
+- **Use the correct host for the debug server.** From the app, `127.0.0.1` is the device/emulator itself, not the host machine. Use:
+  - **Android emulator:** host `10.0.2.2` (emulator’s alias for the host).
+  - **iOS simulator:** host `127.0.0.1` (simulator shares the host’s loopback).
+  - Example: `const host = Platform.OS === "android" ? "10.0.2.2" : "127.0.0.1"`.
+- **Keep instrumentation minimal and removable.** Wrap debug-only code in collapsible regions (e.g. `// #region agent log` / `// #endregion`) and remove all instrumentation once the issue is confirmed fixed.
+
 ## High-value commands for CI/local verification
 
 - Install deps: `pnpm install`

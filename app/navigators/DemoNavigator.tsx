@@ -1,18 +1,53 @@
+import React, { Suspense } from "react"
 import { TextStyle, ViewStyle } from "react-native"
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { Icon } from "@/components/Icon"
+import { Screen } from "@/components/Screen"
+import { Text } from "@/components/Text"
 import { EpisodeProvider } from "@/context/EpisodeContext"
+import { PdfTabsProvider } from "@/context/PdfTabsContext"
 import { translate } from "@/i18n/translate"
 import { PdfStackNavigator } from "@/navigators/PdfStackNavigator"
-import { QrScannerScreen } from "@/screens/QrScannerScreen"
 import { useAppTheme } from "@/theme/context"
 import type { ThemedStyle } from "@/theme/types"
 
-import type { DemoTabParamList } from "./navigationTypes"
+import type { DemoTabParamList, DemoTabScreenProps } from "./navigationTypes"
 
 const Tab = createBottomTabNavigator<DemoTabParamList>()
+
+function QrScannerUnavailable() {
+  const { themed } = useAppTheme()
+  return (
+    <Screen preset="fixed" contentContainerStyle={{ flex: 1, justifyContent: "center" }}>
+      <Text tx="qrScannerScreen:webUnsupported" style={themed({ textAlign: "center" })} />
+    </Screen>
+  )
+}
+
+// Lazy-load QR scanner; if native module (expo-image-picker) is missing, show fallback
+const QrScannerScreenLazy = React.lazy(() =>
+  import("@/screens/QrScannerScreen")
+    .then((m) => ({ default: m.QrScannerScreen }))
+    .catch(() => ({ default: QrScannerUnavailable })),
+)
+
+function QrScannerScreenSafe(props: DemoTabScreenProps<"QrScanner">) {
+  return (
+    <Suspense fallback={null}>
+      <QrScannerScreenLazy {...props} />
+    </Suspense>
+  )
+}
+
+function PdfTabProviderWrapper() {
+  return (
+    <PdfTabsProvider>
+      <PdfStackNavigator />
+    </PdfTabsProvider>
+  )
+}
 
 /**
  * This is the main navigator for the demo screens with a bottom tab bar.
@@ -40,7 +75,7 @@ export function DemoNavigator() {
       >
         <Tab.Screen
           name="PdfViewer"
-          component={PdfStackNavigator}
+          component={PdfTabProviderWrapper}
           options={{
             tabBarLabel: translate("demoNavigator:pdfTab"),
             tabBarIcon: ({ focused }) => (
@@ -51,7 +86,7 @@ export function DemoNavigator() {
 
         <Tab.Screen
           name="QrScanner"
-          component={QrScannerScreen}
+          component={QrScannerScreenSafe}
           options={{
             tabBarLabel: translate("demoNavigator:qrScannerTab"),
             tabBarIcon: ({ focused }) => (

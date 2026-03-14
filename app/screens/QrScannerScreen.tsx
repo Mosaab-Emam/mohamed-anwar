@@ -1,12 +1,5 @@
 import { FC, useCallback, useEffect, useState } from "react"
-import {
-  ActivityIndicator,
-  Platform,
-  StyleSheet,
-  TextStyle,
-  View,
-  ViewStyle,
-} from "react-native"
+import { ActivityIndicator, Platform, StyleSheet, TextStyle, View, ViewStyle } from "react-native"
 import { CameraView, useCameraPermissions } from "expo-camera"
 import * as ImagePicker from "expo-image-picker"
 import QRKit from "react-native-qr-kit"
@@ -20,8 +13,8 @@ import { DemoTabScreenProps } from "@/navigators/navigationTypes"
 import { useAppTheme } from "@/theme/context"
 import { $styles } from "@/theme/styles"
 import type { ThemedStyle } from "@/theme/types"
-import { getPdfFile } from "@/utils/pdfFileStorage"
 import { parseDeepLinkUrl } from "@/utils/parseDeepLinkUrl"
+import { getPdfFile } from "@/utils/pdfFileStorage"
 import { useHeader } from "@/utils/useHeader"
 
 export const QrScannerScreen: FC<DemoTabScreenProps<"QrScanner">> = (props) => {
@@ -70,10 +63,10 @@ export const QrScannerScreen: FC<DemoTabScreenProps<"QrScanner">> = (props) => {
           return
         }
 
-        // Navigate to PDF viewer
+        // Navigate to PDF viewer (nested stack)
         navigation.navigate("PdfViewer", {
-          fileId: parsed.fileId,
-          page: parsed.page,
+          screen: "PdfView",
+          params: { fileId: parsed.fileId, page: parsed.page },
         })
       } catch (e) {
         setError(translate("qrScannerScreen:error"))

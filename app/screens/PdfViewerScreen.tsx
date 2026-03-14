@@ -1,26 +1,28 @@
+import { useFocusEffect } from "@react-navigation/native"
+import * as DocumentPicker from "expo-document-picker"
+import * as FileSystem from "expo-file-system/legacy"
+import * as MediaLibrary from "expo-media-library"
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   ActivityIndicator,
-  FlatList,
-  Modal,
+  FlatList, I18nManager, Modal,
   Platform,
+  ScrollView,
   StyleSheet,
   TextStyle,
   TouchableOpacity,
   View,
-  ViewStyle,
+  ViewStyle
 } from "react-native"
-import * as DocumentPicker from "expo-document-picker"
-import * as MediaLibrary from "expo-media-library"
-import { useFocusEffect } from "@react-navigation/native"
-import * as FileSystem from "expo-file-system/legacy"
 import QRCode from "react-native-qrcode-svg"
 import { WebView } from "react-native-webview"
 
 import { Button } from "@/components/Button"
 import { EmptyState } from "@/components/EmptyState"
+import { Icon } from "@/components/Icon"
 import { Screen } from "@/components/Screen"
 import { Text } from "@/components/Text"
+import { usePdfTabs } from "@/context/PdfTabsContext"
 import { translate } from "@/i18n/translate"
 import { PdfStackScreenProps } from "@/navigators/navigationTypes"
 import { useAppTheme } from "@/theme/context"
@@ -34,9 +36,25 @@ import { useHeader } from "@/utils/useHeader"
 
 type PickedFile = { uri: string; name: string }
 
-export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfViewer">> = (props) => {
+export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
   const { route, navigation } = props
-  const { themed } = useAppTheme()
+  const { themed, theme } = useAppTheme()
+  const {
+    tabs,
+    activeTabId,
+    addTab,
+    removeTab,
+    setActiveTab,
+    openInCurrentTab,
+    updateActiveTabPage,
+    clearAllTabs,
+  } = usePdfTabs()
+
+  const activeTab = useMemo(
+    () => (activeTabId ? (tabs.find((t) => t.id === activeTabId) ?? null) : null),
+    [tabs, activeTabId],
+  )
+
   const [picked, setPicked] = useState<PickedFile | null>(null)
   const [base64, setBase64] = useState<string | null>(null)
   const [base64Error, setBase64Error] = useState<string | null>(null)
@@ -57,14 +75,18 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfViewer">> = (props) => 
   const [destinationChoices, setDestinationChoices] = useState<PdfLinkDestination[] | null>(null)
   const [infoBubbleModalVisible, setInfoBubbleModalVisible] = useState(false)
   const [selectedInfoBubble, setSelectedInfoBubble] = useState<PdfInfoBubble | null>(null)
+
+  const effectiveFileId = activeTab?.fileId ?? fileId
+  const effectivePage = activeTab != null ? activeTab.page : currentPage
+
   const pdfLinks = useMemo(() => {
     void linksRefreshKey
-    return fileId ? (getPdfLinks(fileId) ?? []) : []
-  }, [fileId, linksRefreshKey])
+    return effectiveFileId ? (getPdfLinks(effectiveFileId) ?? []) : []
+  }, [effectiveFileId, linksRefreshKey])
   const pdfInfoBubbles = useMemo(() => {
     void linksRefreshKey
-    return fileId ? (getPdfInfoBubbles(fileId) ?? []) : []
-  }, [fileId, linksRefreshKey])
+    return effectiveFileId ? (getPdfInfoBubbles(effectiveFileId) ?? []) : []
+  }, [effectiveFileId, linksRefreshKey])
 
   useFocusEffect(
     useCallback(() => {
@@ -79,32 +101,64 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfViewer">> = (props) => 
     [],
   )
 
-  const uriFromParams = route.params?.uri
   const fileIdFromParams = route.params?.fileId
   const pageFromParams = route.params?.page ?? 1
-  const uri = uriFromParams ?? picked?.uri ?? null
-  const page = uriFromParams != null || fileIdFromParams != null ? pageFromParams : currentPage
+  const uri = picked?.uri ?? null
+  const page = effectivePage
 
   const isLocal = useMemo(() => uri != null && uri.startsWith("file://"), [uri])
 
-  // Handle deep link with fileId
+  // Only clear local state when user closed the last tab (had tabs, now none).
+  // Do NOT clear when tabs.length === 0 and user just picked a file (we need picked to store and add first tab).
+  const hadTabsRef = useRef(false)
   useEffect(() => {
-    if (fileIdFromParams) {
-      const storedFile = getPdfFile(fileIdFromParams)
-      if (storedFile) {
-        setPicked({ uri: storedFile.uri, name: storedFile.name })
-        setFileId(fileIdFromParams)
+    if (tabs.length > 0) hadTabsRef.current = true
+    if (tabs.length === 0 && hadTabsRef.current) {
+      hadTabsRef.current = false
+      setPicked(null)
+      setFileId(null)
+      setBase64(null)
+      setBase64Error(null)
+      setCurrentPage(1)
+    }
+  }, [tabs.length])
+
+  // Sync picked/fileId from active tab when tab-driven.
+  // Only update (and clear base64) when the stored URI actually differs from current picked,
+  // so redundant runs (same tab, new object reference) don't wipe base64 and cause stuck loading.
+  useEffect(() => {
+    if (activeTab) {
+      const stored = getPdfFile(activeTab.fileId)
+      const uriChanged = stored && stored.uri !== picked?.uri
+      if (stored && uriChanged) {
+        setPicked({ uri: stored.uri, name: stored.name })
+        setFileId(activeTab.fileId)
         setBase64(null)
         setBase64Error(null)
-        // Set page from params if provided
-        if (pageFromParams && pageFromParams > 0) {
-          setCurrentPage(pageFromParams)
-        }
-      } else {
+      } else if (!stored) {
         setBase64Error(translate("pdfViewerScreen:fileNotFound"))
       }
     }
-  }, [fileIdFromParams, pageFromParams])
+  }, [activeTab, picked?.uri])
+
+  // Deep link / QR: add a tab for params and clear params
+  useEffect(() => {
+    if (!fileIdFromParams || !pageFromParams) return
+    const stored = getPdfFile(fileIdFromParams)
+    if (stored) {
+      addTab({ fileId: fileIdFromParams, page: pageFromParams })
+      navigation.setParams({ uri: undefined, fileId: undefined, page: undefined } as object)
+    } else {
+      setBase64Error(translate("pdfViewerScreen:fileNotFound"))
+    }
+  }, [fileIdFromParams, pageFromParams, addTab, navigation])
+
+  // First pick: when we have fileId and picked with no tabs, add the first tab
+  useEffect(() => {
+    if (tabs.length === 0 && fileId != null && picked != null) {
+      addTab({ fileId, page: 1 })
+    }
+  }, [tabs.length, fileId, picked, addTab])
 
   // Store file when picked (for QR code generation)
   useEffect(() => {
@@ -161,6 +215,7 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfViewer">> = (props) => 
   }, [])
 
   const clearAndPickAnother = useCallback(() => {
+    clearAllTabs()
     setPicked(null)
     setBase64(null)
     setBase64Error(null)
@@ -168,7 +223,7 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfViewer">> = (props) => 
     setFileId(null)
     setCurrentPage(1)
     navigation.setParams({ uri: undefined, fileId: undefined, page: undefined } as object)
-  }, [navigation])
+  }, [navigation, clearAllTabs])
 
   const handleWebViewMessage = useCallback(
     (event: { nativeEvent: { data: string } }) => {
@@ -176,6 +231,7 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfViewer">> = (props) => 
         const message = JSON.parse(event.nativeEvent.data)
         if (message.type === "pageChanged" && typeof message.page === "number") {
           setCurrentPage(message.page)
+          updateActiveTabPage(message.page)
         }
         if (
           message.type === "linkClicked" &&
@@ -198,7 +254,7 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfViewer">> = (props) => 
         // Ignore parse errors
       }
     },
-    [currentPage],
+    [currentPage, updateActiveTabPage],
   )
 
   const closeDestinationModal = useCallback(() => {
@@ -213,28 +269,41 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfViewer">> = (props) => 
 
   const selectDestination = useCallback(
     (d: PdfLinkDestination) => {
+      if (effectiveFileId != null) {
+        openInCurrentTab(effectiveFileId, d.page)
+      }
       setCurrentPage(d.page)
       webViewRef.current?.injectJavaScript(`window.goToPage(${d.page}); true;`)
       closeDestinationModal()
     },
-    [closeDestinationModal],
+    [closeDestinationModal, effectiveFileId, openInCurrentTab],
+  )
+
+  const openDestinationInNewTab = useCallback(
+    (d: PdfLinkDestination) => {
+      if (effectiveFileId != null) {
+        addTab({ fileId: effectiveFileId, page: d.page, title: d.title })
+      }
+      closeDestinationModal()
+    },
+    [effectiveFileId, addTab, closeDestinationModal],
   )
 
   const generateDeepLinkUrl = useCallback(() => {
-    if (!fileId || !currentPage) return null
+    if (!effectiveFileId || !effectivePage) return null
     const scheme = "mohamed-anwar"
-    return `${scheme}://Demo/PdfViewer?fileId=${encodeURIComponent(fileId)}&page=${currentPage}`
-  }, [fileId, currentPage])
+    return `${scheme}://Demo/PdfViewer?fileId=${encodeURIComponent(effectiveFileId)}&page=${effectivePage}`
+  }, [effectiveFileId, effectivePage])
 
   const handleGenerateQr = useCallback(() => {
-    if (!fileId || !currentPage) {
+    if (!effectiveFileId || !effectivePage) {
       setQrError(translate("pdfViewerScreen:qrError"))
       return
     }
     setQrError(null)
     setQrSaved(false)
     setShowQrModal(true)
-  }, [fileId, currentPage])
+  }, [effectiveFileId, effectivePage])
 
   const handleSaveQrToGallery = useCallback(async () => {
     const svg = qrSvgRef.current
@@ -302,7 +371,7 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfViewer">> = (props) => 
   }
 
   return (
-    <Screen preset="fixed" contentContainerStyle={$styles.flex1} safeAreaEdges={["top"]}>
+    <Screen preset="fixed" contentContainerStyle={$styles.flex1}>
       {showEmpty && (
         <View style={[styles.centered, themed($emptyContainer)]}>
           <EmptyState
@@ -343,8 +412,51 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfViewer">> = (props) => 
 
       {showViewer && html != null && (
         <View style={$styles.flex1}>
+          {tabs.length > 1 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={true}
+              contentContainerStyle={themed($tabBarScroll)}
+              style={themed($tabBarContainer)}
+              contentInsetAdjustmentBehavior="never"
+            >
+              {tabs.map((tab) => (
+                <TouchableOpacity
+                  key={tab.id}
+                  style={themed([$tabChip, tab.id === activeTabId && $tabChipActive])}
+                  onPress={() => setActiveTab(tab.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={themed($tabChipLabelWrap)}>
+                    <Text
+                      text={
+                        tab.title ??
+                        translate("pdfViewerScreen:tabPageLabel", { page: tab.page })
+                      }
+                      preset="default"
+                      style={themed($tabChipText)}
+                      numberOfLines={1}
+                    />
+                  </View>
+                  <TouchableOpacity
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    onPress={(e) => {
+                      e.stopPropagation()
+                      removeTab(tab.id)
+                    }}
+                    style={themed($tabCloseWrap)}
+                    accessibilityLabel={translate("pdfViewerScreen:closeTab")}
+                  >
+                    <View style={themed($tabCloseIconContainer)}>
+                      <Icon icon="x" size={16} color={theme.colors.text} />
+                    </View>
+                  </TouchableOpacity>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
           <WebView
-            key={`pdf-${fileId ?? ""}-${page}-${pdfLinks.length}-${pdfInfoBubbles.length}-${linksRefreshKey}`}
+            key={`pdf-${effectiveFileId ?? ""}-${page}-${pdfLinks.length}-${pdfInfoBubbles.length}-${linksRefreshKey}`}
             ref={webViewRef}
             source={{ html }}
             style={themed($webview)}
@@ -359,15 +471,15 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfViewer">> = (props) => 
               <Button
                 tx="pdfViewerScreen:addLinks"
                 onPress={() =>
-                  navigation.navigate("PdfLinkEditor", { fileId: fileId ?? undefined })
+                  navigation.navigate("PdfLinkEditor", { fileId: effectiveFileId ?? undefined })
                 }
-                disabled={!fileId || isStoring}
+                disabled={!effectiveFileId || isStoring}
                 style={themed($generateQrButton)}
               />
               <Button
                 tx="pdfViewerScreen:generateQr"
                 onPress={handleGenerateQr}
-                disabled={!fileId || isStoring}
+                disabled={!effectiveFileId || isStoring}
                 style={themed($generateQrButton)}
               />
               <Button
@@ -402,11 +514,7 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfViewer">> = (props) => 
                 data={destinationChoices ?? []}
                 keyExtractor={(item, index) => `${item.page}-${item.title}-${index}`}
                 renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={themed($destinationItem)}
-                    onPress={() => selectDestination(item)}
-                    activeOpacity={0.7}
-                  >
+                  <View style={themed($destinationItem)}>
                     <Text
                       text={translate("pdfViewerScreen:destinationOption", {
                         title: item.title,
@@ -415,7 +523,19 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfViewer">> = (props) => 
                       preset="default"
                       style={themed($destinationItemText)}
                     />
-                  </TouchableOpacity>
+                    <View style={themed($destinationItemActions)}>
+                      <Button
+                        tx="pdfViewerScreen:openInNewTab"
+                        onPress={() => openDestinationInNewTab(item)}
+                        style={themed($destinationActionButton)}
+                      />
+                      <Button
+                        tx="pdfViewerScreen:openInCurrentTab"
+                        onPress={() => selectDestination(item)}
+                        style={themed($destinationActionButton)}
+                      />
+                    </View>
+                  </View>
                 )}
                 style={themed($destinationList)}
               />
@@ -526,6 +646,7 @@ const styles = StyleSheet.create({
 const $webview: ThemedStyle<ViewStyle> = ({ colors }) => ({
   backgroundColor: colors.transparent,
   flex: 1,
+  minHeight: 0,
 })
 
 const $emptyContainer: ThemedStyle<ViewStyle> = ({ spacing }) => ({
@@ -546,6 +667,7 @@ const $selectAnotherButton: ThemedStyle<ViewStyle> = ({ spacing }) => ({
 })
 
 const $toolbar: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flexShrink: 0,
   paddingTop: spacing.sm,
   paddingBottom: spacing.lg,
 })
@@ -673,4 +795,71 @@ const $storingIndicator: ThemedStyle<ViewStyle> = ({ spacing }) => ({
 
 const $storingText: ThemedStyle<TextStyle> = () => ({
   fontSize: 12,
+})
+
+const $tabBarContainer: ThemedStyle<ViewStyle> = ({ colors }) => ({
+  flexGrow: 0,
+  flexShrink: 0,
+  borderBottomWidth: StyleSheet.hairlineWidth,
+  borderBottomColor: colors.palette.neutral400,
+})
+
+const $tabBarScroll: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  paddingVertical: spacing.sm,
+  paddingHorizontal: spacing.sm,
+  flexDirection: "row",
+  alignItems: "center",
+  gap: spacing.sm,
+})
+
+const $tabChip: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  flexDirection: I18nManager.isRTL ? "row-reverse" : "row",
+  alignItems: "center",
+  paddingVertical: spacing.xs,
+  paddingLeft: I18nManager.isRTL ? spacing.xs : spacing.sm,
+  paddingRight: I18nManager.isRTL ? spacing.sm : spacing.xs,
+  borderRadius: 8,
+  backgroundColor: colors.palette.neutral200,
+  maxWidth: 160,
+  flexShrink: 0,
+})
+
+const $tabChipActive: ThemedStyle<ViewStyle> = ({ colors }) => ({
+  backgroundColor: colors.palette.primary100,
+})
+
+const $tabChipLabelWrap: ThemedStyle<ViewStyle> = () => ({
+  flex: 1,
+  minWidth: 0,
+  justifyContent: "center",
+})
+
+const $tabChipText: ThemedStyle<TextStyle> = ({ colors }) => ({
+  color: colors.text,
+  fontSize: 14,
+})
+
+const $tabCloseWrap: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flexShrink: 0,
+  marginLeft: I18nManager.isRTL ? 0 : spacing.xs,
+  marginRight: I18nManager.isRTL ? spacing.xs : 0,
+  justifyContent: "center",
+  alignItems: "center",
+})
+
+const $tabCloseIconContainer: ThemedStyle<ViewStyle> = () => ({
+  width: 24,
+  height: 24,
+  justifyContent: "center",
+  alignItems: "center",
+})
+
+const $destinationItemActions: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  flexDirection: I18nManager.isRTL ? "row-reverse" : "row",
+  gap: spacing.sm,
+  marginTop: spacing.xs,
+})
+
+const $destinationActionButton: ThemedStyle<ViewStyle> = () => ({
+  flex: 1,
 })

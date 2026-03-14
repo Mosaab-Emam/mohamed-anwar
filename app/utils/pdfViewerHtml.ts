@@ -35,13 +35,13 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { direction: rtl; background: #1a1a1a; height: 100vh; min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
-    #toolbar { position: fixed; top: 0; left: 0; right: 0; height: 44px; background: #2d2d2d; display: flex; align-items: center; justify-content: center; gap: 12px; z-index: 10; }
+    body { direction: rtl; background: #1a1a1a; height: 100vh; min-height: 100vh; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
+    #toolbar { flex-shrink: 0; height: 44px; width: 100%; background: #2d2d2d; display: flex; align-items: center; justify-content: center; gap: 12px; }
     #pageInfo { color: #eee; font-family: system-ui, sans-serif; font-size: 14px; display: flex; align-items: center; gap: 6px; }
     #pageInput { width: 48px; padding: 4px 8px; font-size: 14px; text-align: center; border-radius: 6px; border: 1px solid #555; background: #1a1a1a; color: #eee; }
     .navBtn { background: #444; color: #eee; border: none; padding: 6px 12px; font-size: 14px; border-radius: 6px; cursor: pointer; }
     .navBtn:disabled { opacity: 0.4; cursor: not-allowed; }
-    #container { flex: 1; width: 100%; min-height: 200px; overflow: auto; padding: 52px 8px 16px; }
+    #container { flex: 1; width: 100%; min-height: 0; overflow: auto; padding: 8px; }
     .pageWrap { position: relative; display: inline-block; margin: 0 auto 16px; }
     .pageWrap canvas { display: block; background: #fff; margin: 0; }
     .linkOverlay { position: absolute; cursor: pointer; pointer-events: auto; left: 0; top: 0; background: rgba(100, 150, 255, 0.2); border: 1px solid rgba(100, 150, 255, 0.6); }

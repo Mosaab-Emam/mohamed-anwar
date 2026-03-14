@@ -11,7 +11,7 @@ const forcedLocale = "ar"
 const fallbackLocale = "ar"
 
 const resources = { ar, en }
-export let isRTL = true
+export const isRTL = true
 
 // Force Arabic + RTL across the whole app.
 I18nManager.allowRTL(true)
