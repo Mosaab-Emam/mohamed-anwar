@@ -1,7 +1,7 @@
 /**
- * Portable encrypted PDF library storage.
- * Single folder (manifest.enc + {fileId}.pdf.enc) in documentDirectory/PDFLibrary/.
- * Export/import use the same format so the folder can be copied to another device.
+ * Portable PDF library storage.
+ * Single folder (manifest.enc + {fileId}.pdf) in documentDirectory/PDFLibrary/.
+ * Manifest is encrypted; PDF files are stored plain. Export/import use the same format.
  */
 
 import { randomUUID } from "expo-crypto"
@@ -13,6 +13,7 @@ import type { PdfInfoBubble, PdfLink } from "./pdfLinkStorage"
 
 const LIBRARY_DIR = "PDFLibrary"
 const MANIFEST_FILENAME = "manifest.enc"
+const PDF_SUFFIX = ".pdf"
 const ENC_SUFFIX = ".pdf.enc"
 
 export interface LibraryEntryMeta {
@@ -44,6 +45,22 @@ async function ensureLibraryDir(): Promise<string> {
     await FileSystem.makeDirectoryAsync(root, { intermediates: true })
   }
   return root
+}
+
+/**
+ * Returns the path to the PDF file for fileId (.pdf if present, else .pdf.enc), or null if neither exists.
+ */
+async function getLibraryPdfPath(
+  root: string,
+  fileId: string,
+): Promise<{ path: string; encrypted: boolean } | null> {
+  const pdfPath = `${root}${fileId}${PDF_SUFFIX}`
+  const pdfInfo = await FileSystem.getInfoAsync(pdfPath)
+  if (pdfInfo.exists) return { path: pdfPath, encrypted: false }
+  const encPath = `${root}${fileId}${ENC_SUFFIX}`
+  const encInfo = await FileSystem.getInfoAsync(encPath)
+  if (encInfo.exists) return { path: encPath, encrypted: true }
+  return null
 }
 
 async function readManifest(root: string): Promise<LibraryManifest> {
@@ -99,21 +116,13 @@ export async function getLibraryEntry(fileId: string): Promise<LibraryEntry | nu
 }
 
 /**
- * Add a PDF to the library (encrypt and store). Returns the new fileId.
+ * Add a PDF to the library (store plain). Returns the new fileId.
  */
 export async function addToLibrary(sourcePdfUri: string, name: string): Promise<string> {
   const root = await ensureLibraryDir()
   const fileId = randomUUID()
-  const base64 = await FileSystem.readAsStringAsync(sourcePdfUri, {
-    encoding: FileSystem.EncodingType.Base64,
-  })
-  const plaintext = toByteArray(base64)
-  const combined = await encryptBytes(plaintext)
-  const encBase64 = fromByteArray(combined)
-  const encPath = `${root}${fileId}${ENC_SUFFIX}`
-  await FileSystem.writeAsStringAsync(encPath, encBase64, {
-    encoding: FileSystem.EncodingType.Base64,
-  })
+  const pdfPath = `${root}${fileId}${PDF_SUFFIX}`
+  await FileSystem.copyAsync({ from: sourcePdfUri, to: pdfPath })
   const manifest = await readManifest(root)
   manifest.entries.push({
     fileId,
@@ -145,19 +154,25 @@ export async function updateLibraryEntryLinks(
 }
 
 /**
- * Get decrypted PDF content as base64 for viewing.
+ * Get PDF content as base64 for viewing. Prefers plain .pdf; migrates .pdf.enc on read.
  */
 export async function getLibraryPdfBase64(fileId: string): Promise<string | null> {
   const root = getLibraryRoot()
-  const encPath = `${root}${fileId}${ENC_SUFFIX}`
-  const info = await FileSystem.getInfoAsync(encPath)
-  if (!info.exists) return null
-  const base64 = await FileSystem.readAsStringAsync(encPath, {
+  const resolved = await getLibraryPdfPath(root, fileId)
+  if (!resolved) return null
+  const base64 = await FileSystem.readAsStringAsync(resolved.path, {
     encoding: FileSystem.EncodingType.Base64,
   })
+  if (!resolved.encrypted) return base64
   const combined = toByteArray(base64)
   const decrypted = await decryptBytes(combined)
-  return fromByteArray(decrypted)
+  const plainBase64 = fromByteArray(decrypted)
+  const pdfPath = `${root}${fileId}${PDF_SUFFIX}`
+  await FileSystem.writeAsStringAsync(pdfPath, plainBase64, {
+    encoding: FileSystem.EncodingType.Base64,
+  })
+  await FileSystem.deleteAsync(resolved.path, { idempotent: true })
+  return plainBase64
 }
 
 /**
@@ -165,9 +180,13 @@ export async function getLibraryPdfBase64(fileId: string): Promise<string | null
  */
 export async function removeFromLibrary(fileId: string): Promise<void> {
   const root = await ensureLibraryDir()
-  const encPath = `${root}${fileId}${ENC_SUFFIX}`
   try {
-    await FileSystem.deleteAsync(encPath, { idempotent: true })
+    await FileSystem.deleteAsync(`${root}${fileId}${PDF_SUFFIX}`, { idempotent: true })
+  } catch {
+    // ignore
+  }
+  try {
+    await FileSystem.deleteAsync(`${root}${fileId}${ENC_SUFFIX}`, { idempotent: true })
   } catch {
     // ignore
   }
@@ -179,7 +198,7 @@ export async function removeFromLibrary(fileId: string): Promise<void> {
 /**
  * Export the library to a user-chosen directory (SAF on Android).
  * destinationDirectoryUri: from StorageAccessFramework.requestDirectoryPermissionsAsync().directoryUri.
- * Creates manifest.enc and {fileId}.pdf.enc in that directory.
+ * Creates manifest.enc and {fileId}.pdf (plain) in that directory.
  */
 export async function exportLibraryToDirectory(destinationDirectoryUri: string): Promise<void> {
   const root = await ensureLibraryDir()
@@ -208,31 +227,26 @@ export async function exportLibraryToDirectory(destinationDirectoryUri: string):
   await writeFileToDir(destinationDirectoryUri, MANIFEST_FILENAME, manifestBase64)
 
   for (const entry of manifest.entries) {
-    const encPath = `${root}${entry.fileId}${ENC_SUFFIX}`
-    const info = await FileSystem.getInfoAsync(encPath)
-    if (!info.exists) continue
-    const base64 = await FileSystem.readAsStringAsync(encPath, {
-      encoding: FileSystem.EncodingType.Base64,
-    })
-    await writeFileToDir(destinationDirectoryUri, `${entry.fileId}${ENC_SUFFIX}`, base64)
+    const pdfBase64 = await getLibraryPdfBase64(entry.fileId)
+    if (pdfBase64 == null) continue
+    await writeFileToDir(destinationDirectoryUri, `${entry.fileId}${PDF_SUFFIX}`, pdfBase64)
   }
 }
 
 /**
  * Export a single library entry to a user-chosen directory (SAF on Android).
- * Creates a folder with the same format: manifest.enc (one entry) + {fileId}.pdf.enc.
+ * Creates a folder with the same format: manifest.enc (one entry) + {fileId}.pdf (plain).
  * Use this to send one PDF (and its links) to a consumer without exporting the whole library.
  */
 export async function exportLibraryEntryToDirectory(
   fileId: string,
   destinationDirectoryUri: string,
 ): Promise<void> {
-  const root = await ensureLibraryDir()
+  await ensureLibraryDir()
   const entry = await getLibraryEntry(fileId)
   if (!entry) throw new Error("Library entry not found")
-  const encPath = `${root}${fileId}${ENC_SUFFIX}`
-  const info = await FileSystem.getInfoAsync(encPath)
-  if (!info.exists) throw new Error("PDF file not found")
+  const pdfBase64 = await getLibraryPdfBase64(fileId)
+  if (pdfBase64 == null) throw new Error("PDF file not found")
 
   const { StorageAccessFramework } = FileSystem
   const singleManifest: LibraryManifest = { version: 1, entries: [entry] }
@@ -252,10 +266,7 @@ export async function exportLibraryEntryToDirectory(
     })
   }
   await writeFileToDir(destinationDirectoryUri, MANIFEST_FILENAME, manifestBase64)
-  const pdfBase64 = await FileSystem.readAsStringAsync(encPath, {
-    encoding: FileSystem.EncodingType.Base64,
-  })
-  await writeFileToDir(destinationDirectoryUri, `${fileId}${ENC_SUFFIX}`, pdfBase64)
+  await writeFileToDir(destinationDirectoryUri, `${fileId}${PDF_SUFFIX}`, pdfBase64)
 }
 
 function isLibraryManifest(obj: unknown): obj is LibraryManifest {
@@ -300,18 +311,35 @@ export async function importLibraryFromDirectory(sourceDirectoryUri: string): Pr
   }
 
   for (const entry of importedManifest.entries) {
-    const encUri = fileUris.find(
+    const plainUri = fileUris.find(
       (u) =>
+        !u.endsWith("/") &&
         u.includes(entry.fileId) &&
-        (u.includes("pdf") || u.includes(".enc")) &&
-        !u.includes("manifest"),
+        (u.endsWith(".pdf") || u.includes(`${entry.fileId}.pdf`)) &&
+        !u.includes(".enc"),
     )
-    if (!encUri) continue
+    const encUri =
+      plainUri ??
+      fileUris.find(
+        (u) =>
+          !u.endsWith("/") &&
+          u.includes(entry.fileId) &&
+          (u.includes("pdf") || u.includes(".enc")) &&
+          !u.includes("manifest"),
+      )
+    const sourceUri = plainUri ?? encUri
+    if (!sourceUri) continue
+    const isEncrypted = !plainUri
     try {
-      const base64 = await FileSystem.readAsStringAsync(encUri, {
+      let base64 = await FileSystem.readAsStringAsync(sourceUri, {
         encoding: FileSystem.EncodingType.Base64,
       })
-      const destPath = `${root}${entry.fileId}${ENC_SUFFIX}`
+      if (isEncrypted) {
+        const combined = toByteArray(base64)
+        const decrypted = await decryptBytes(combined)
+        base64 = fromByteArray(decrypted)
+      }
+      const destPath = `${root}${entry.fileId}${PDF_SUFFIX}`
       await FileSystem.writeAsStringAsync(destPath, base64, {
         encoding: FileSystem.EncodingType.Base64,
       })

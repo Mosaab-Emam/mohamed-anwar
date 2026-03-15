@@ -21,7 +21,7 @@ This file helps AI coding agents become productive quickly in fresh sessions.
 - Navigation: React Navigation (native stack + bottom tabs).
 - PDF rendering/editor UI: `react-native-webview` + inlined `pdf.js` HTML.
 - Storage:
-  - **PDF library (creator app):** Single portable folder `documentDirectory/PDFLibrary/` with encrypted `manifest.enc` and `{fileId}.pdf.enc` files. AES-256-GCM via `@noble/ciphers`; key derived from fixed salt (see `pdfLibraryCrypto.ts`). Same folder format and key derivation must be used by a consumer app to open exported folders.
+  - **PDF library (creator app):** Single portable folder `documentDirectory/PDFLibrary/` with encrypted `manifest.enc` (links, destinations, metadata) and **plain** `{fileId}.pdf` files. Only the manifest is encrypted (AES-256-GCM via `@noble/ciphers`; key derived from fixed salt in `pdfLibraryCrypto.ts`). A consumer app decrypts the manifest and reads PDFs as plain files; import still supports legacy `{fileId}.pdf.enc` for backward compatibility.
   - Legacy: MMKV (`react-native-mmkv`) and `pdfFileStorage`/`pdfLinkStorage` are superseded by the library for the creator flow.
 - QR:
   - Generation: `react-native-qrcode-svg`.
@@ -54,9 +54,9 @@ This file helps AI coding agents become productive quickly in fresh sessions.
 
 ### 1) PDF open and persist flow
 
-1. User picks PDF from `expo-document-picker` or opens from **Library** (list populated from the encrypted library folder).
-2. Picked file is encrypted and added to the library via `addToLibrary()`; manifest stores `fileId`, name, timestamp, links, info bubbles.
-3. Library lives in `documentDirectory/PDFLibrary/` (`manifest.enc` + `{fileId}.pdf.enc`). Same folder can be exported (Android SAF) and copied to another device; import or consumer app uses same format and key to read.
+1. User picks PDF from `expo-document-picker` or opens from **Library** (list populated from the library folder).
+2. Picked file is stored plain and added to the library via `addToLibrary()`; manifest (encrypted) stores `fileId`, name, timestamp, links, info bubbles.
+3. Library lives in `documentDirectory/PDFLibrary/` (`manifest.enc` + plain `{fileId}.pdf`). Same folder can be exported (Android SAF) and copied to another device; import or consumer app uses same format (decrypt manifest only; read PDFs as plain).
 4. `fileId` is the stable identifier for deep links and QR codes; resolution is via `getLibraryEntry(fileId)`.
 
 ### 2) PDF rendering flow
@@ -90,8 +90,8 @@ This file helps AI coding agents become productive quickly in fresh sessions.
   - `PdfViewer: { uri?: string; fileId?: string; page?: number } | undefined`
   - `PdfLinkEditor: { fileId?: string } | undefined`
 - Library folder format (portable; consumer app must match):
-  - `manifest.enc`: encrypted JSON `{ version: 1, entries: [ { fileId, name, timestamp, links, infoBubbles } ] }`.
-  - `{fileId}.pdf.enc`: AES-GCM encrypted PDF bytes. Key: SHA256 of `"mohamed-anwar-pdf-library-v1"` (see `pdfLibraryCrypto.ts`).
+  - `manifest.enc`: encrypted JSON `{ version: 1, entries: [ { fileId, name, timestamp, links, infoBubbles } ] }`. Key: SHA256 of `"mohamed-anwar-pdf-library-v1"` (see `pdfLibraryCrypto.ts`).
+  - `{fileId}.pdf`: plain PDF bytes (not encrypted). Import still supports legacy `{fileId}.pdf.enc` for backward compatibility.
 - Legacy storage key prefixes (superseded by library for creator): `pdfFiles:`, `pdfLinks:`, `pdfInfoBubbles:`.
 
 If you change any of these contracts, update:
