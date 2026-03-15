@@ -32,16 +32,11 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=8.0, user-scalable=yes" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { direction: rtl; background: #1a1a1a; height: 100vh; min-height: 100vh; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
-    #toolbar { flex-shrink: 0; height: 44px; width: 100%; background: #2d2d2d; display: flex; align-items: center; justify-content: center; gap: 12px; }
-    #pageInfo { color: #eee; font-family: system-ui, sans-serif; font-size: 14px; display: flex; align-items: center; gap: 6px; }
-    #pageInput { width: 48px; padding: 4px 8px; font-size: 14px; text-align: center; border-radius: 6px; border: 1px solid #555; background: #1a1a1a; color: #eee; }
-    .navBtn { background: #444; color: #eee; border: none; padding: 6px 12px; font-size: 14px; border-radius: 6px; cursor: pointer; }
-    .navBtn:disabled { opacity: 0.4; cursor: not-allowed; }
-    /* PDF canvas must be LTR or rendering is scrambled (pdf.js #12081) */
+    /* PDF canvas must be LTR or rendering is scrambled (pdf.js #12081). Toolbar is native so zoom only affects this container. */
     #container { flex: 1; width: 100%; min-height: 0; overflow: auto; padding: 8px; direction: ltr; }
     .pageWrap { position: relative; display: inline-block; margin: 0 auto 16px; direction: ltr; }
     .pageWrap canvas { display: block; background: #fff; margin: 0; }
@@ -71,14 +66,6 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
   </style>
 </head>
 <body>
-  <div id="toolbar">
-    <button type="button" class="navBtn" id="prevBtn" aria-label="الصفحة السابقة">السابق</button>
-    <span id="pageInfo">
-      <input type="number" id="pageInput" min="1" value="1" aria-label="رقم الصفحة" />
-      <span id="pageTotal">—</span>
-    </span>
-    <button type="button" class="navBtn" id="nextBtn" aria-label="الصفحة التالية">التالي</button>
-  </div>
   <div id="container"></div>
   <div id="error"></div>
   <script src="${PDF_JS_URL}"><\/script>
@@ -94,9 +81,6 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
       var numPages = 0;
       var currentPage = PDF_PAGE;
       var container = document.getElementById('container');
-      var pageInfo = document.getElementById('pageInfo');
-      var pageInput = document.getElementById('pageInput');
-      var pageTotal = document.getElementById('pageTotal');
       var errEl = document.getElementById('error');
 
       function showErr(msg) {
@@ -106,16 +90,6 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
       function renderPage(n) {
         if (!pdfDoc || n < 1 || n > numPages) return;
         currentPage = n;
-        pageTotal.textContent = 'من ' + numPages;
-        if (pageInput) {
-          pageInput.value = String(n);
-          pageInput.max = numPages;
-        }
-        var prevBtn = document.getElementById('prevBtn');
-        var nextBtn = document.getElementById('nextBtn');
-        if (prevBtn) { prevBtn.disabled = n <= 1; }
-        if (nextBtn) { nextBtn.disabled = n >= numPages; }
-        // Notify React Native of page change
         if (window.ReactNativeWebView) {
           window.ReactNativeWebView.postMessage(JSON.stringify({
             type: 'pageChanged',
@@ -135,7 +109,7 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
             ? Math.max(0.1, Math.min(2.5, (winW - 16) / v1.width))
             : 1;
           var pixelRatio = Math.min(window.devicePixelRatio || 1, 3);
-          var maxZoom = 3;
+          var maxZoom = 8;
           var scale = baseScale * pixelRatio * maxZoom;
           var viewport = p.getViewport({ scale: scale });
           var canvas = document.createElement('canvas');
@@ -224,25 +198,6 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
       };
       window.nextPage = function() { if (currentPage < numPages) renderPage(currentPage + 1); };
       window.prevPage = function() { if (currentPage > 1) renderPage(currentPage - 1); };
-
-      document.getElementById('prevBtn').addEventListener('click', window.prevPage);
-      document.getElementById('nextBtn').addEventListener('click', window.nextPage);
-
-      if (pageInput) {
-        pageInput.addEventListener('change', function() {
-          var p = parseInt(this.value, 10);
-          if (!isNaN(p) && p >= 1 && p <= numPages) window.goToPage(p);
-          else this.value = String(currentPage);
-        });
-        pageInput.addEventListener('keydown', function(e) {
-          if (e.key === 'Enter') {
-            var p = parseInt(this.value, 10);
-            if (!isNaN(p) && p >= 1 && p <= numPages) window.goToPage(p);
-            else this.value = String(currentPage);
-            e.preventDefault();
-          }
-        });
-      }
 
       if (typeof pdfjsLib === 'undefined') {
         showErr('تعذر تحميل pdf.js');

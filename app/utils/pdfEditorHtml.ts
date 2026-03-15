@@ -22,37 +22,13 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
   return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=8.0, user-scalable=yes" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { direction: rtl; background: #1a1a1a; height: 100vh; min-height: 100vh; display: flex; flex-direction: column; align-items: center; font-family: system-ui, sans-serif; }
-    #toolbar { position: fixed; top: 0; left: 0; right: 0; min-height: 88px; background: #2d2d2d; display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; z-index: 10; }
-    #toolbar.has-results { min-height: 124px; }
-    .toolbarRow { display: flex; align-items: center; justify-content: center; gap: 12px; }
-    #pageInfo { color: #eee; font-size: 14px; display: flex; align-items: center; gap: 6px; }
-    #pageInput { width: 48px; padding: 4px 8px; font-size: 14px; text-align: center; border-radius: 6px; border: 1px solid #555; background: #1a1a1a; color: #eee; }
-    .navBtn { background: #444; color: #eee; border: none; padding: 6px 12px; font-size: 14px; border-radius: 6px; cursor: pointer; }
-    .navBtn:disabled { opacity: 0.4; cursor: not-allowed; }
-    #addLinkBtn { background: #2d6a2d; color: #eee; }
-    #addLinkBtn.active { background: #4a9a4a; }
-    #addInfoBtn { background: #2d4a6a; color: #eee; }
-    #addInfoBtn.active { background: #4a7ca3; }
-    #searchInput { flex: 1; padding: 6px 10px; border-radius: 6px; border: 1px solid #555; background: #1a1a1a; color: #eee; font-size: 14px; min-width: 120px; max-width: 200px; }
-    #searchInfo { color: #eee; font-size: 12px; min-width: 70px; text-align: center; }
-    .resultsRow { display: none; align-items: center; justify-content: center; gap: 12px; padding: 4px 0; }
-    .resultsRow.visible { display: flex; }
-    #resultsText { color: #aaa; font-size: 13px; }
-    #linkAllBtn { background: #6a2d6a; color: #eee; padding: 8px 16px; }
-    #bulkResultPanel { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #2d2d2d; color: #eee; padding: 20px; border-radius: 12px; z-index: 30; display: none; max-width: 90%; text-align: center; }
-    #bulkResultPanel.visible { display: block; }
-    #bulkResultPanel h3 { margin-bottom: 12px; color: #4a9a4a; }
-    #bulkResultPanel p { margin-bottom: 8px; font-size: 14px; }
-    #bulkResultPanel .pages { font-size: 12px; color: #aaa; margin-bottom: 16px; max-height: 100px; overflow-y: auto; }
-    #bulkOverlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 25; display: none; }
-    #bulkOverlay.visible { display: block; }
+    /* Toolbar and form panels are native - zoom only affects PDF container */
     /* PDF canvas must be LTR or rendering is scrambled (pdf.js #12081) */
-    #container { flex: 1; width: 100%; min-height: 200px; overflow: auto; padding: 96px 8px 16px; direction: ltr; }
-    #container.has-results { padding-top: 132px; }
+    #container { flex: 1; width: 100%; min-height: 200px; overflow: auto; padding: 8px; direction: ltr; }
     .pageWrap { position: relative; display: inline-block; margin: 0 auto 16px; direction: ltr; }
     .pageWrap canvas { display: block; background: #fff; margin: 0; }
     .linkOverlay { position: absolute; pointer-events: none; background: rgba(100, 150, 255, 0.2); border: 1px solid rgba(100, 150, 255, 0.6); left: 0; top: 0; }
@@ -73,78 +49,12 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
       pointer-events: none;
     }
     .drawRect { position: absolute; pointer-events: none; background: rgba(255, 200, 80, 0.3); border: 2px solid #e0a020; }
-    #formPanel { position: fixed; bottom: 0; left: 0; right: 0; background: #2d2d2d; color: #eee; padding: 12px; max-height: 45vh; overflow: auto; z-index: 20; display: none; }
-    #formPanel.visible { display: block; }
-    #formPanel h3 { margin-bottom: 8px; font-size: 14px; }
-    .destRow { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
-    .destRow input { flex: 1; padding: 6px; border-radius: 4px; border: 1px solid #555; background: #1a1a1a; color: #eee; }
-    .destRow input[type="number"] { width: 60px; flex: none; }
-    .formBtn { padding: 6px 12px; border-radius: 6px; border: none; cursor: pointer; font-size: 14px; margin-right: 8px; margin-top: 8px; }
-    .formBtn.primary { background: #2d6a2d; color: #eee; }
-    .formBtn.secondary { background: #444; color: #eee; }
-    #infoFormPanel { position: fixed; bottom: 0; left: 0; right: 0; background: #2d2d2d; color: #eee; padding: 12px; max-height: 40vh; overflow: auto; z-index: 20; display: none; }
-    #infoFormPanel.visible { display: block; }
-    #infoFormPanel h3 { margin-bottom: 8px; font-size: 14px; }
-    #infoTextArea {
-      width: 100%;
-      min-height: 110px;
-      resize: vertical;
-      padding: 8px;
-      border-radius: 6px;
-      border: 1px solid #555;
-      background: #1a1a1a;
-      color: #eee;
-      font-family: system-ui, sans-serif;
-      font-size: 14px;
-      margin-bottom: 8px;
-    }
     #error { color: #e74c3c; padding: 16px; }
   </style>
 </head>
 <body>
-  <div id="toolbar">
-    <div class="toolbarRow">
-      <button type="button" class="navBtn" id="prevBtn">السابق</button>
-      <span id="pageInfo">
-        <input type="number" id="pageInput" min="1" value="1" aria-label="رقم الصفحة" />
-        <span id="pageTotal">—</span>
-      </span>
-      <button type="button" class="navBtn" id="nextBtn">التالي</button>
-      <button type="button" class="navBtn" id="addLinkBtn">إضافة رابط</button>
-      <button type="button" class="navBtn" id="addInfoBtn">إضافة معلومة</button>
-    </div>
-    <div class="toolbarRow">
-      <input type="text" id="searchInput" placeholder="ابحث..." />
-      <button type="button" class="navBtn" id="searchBtn">بحث</button>
-      <span id="searchInfo">—</span>
-    </div>
-    <div class="resultsRow" id="resultsRow">
-      <span id="resultsText"></span>
-      <button type="button" class="navBtn" id="linkAllBtn">ربط جميع النتائج</button>
-    </div>
-  </div>
   <div id="container"></div>
   <div id="error"></div>
-  <div id="formPanel">
-    <h3 id="formTitle">رابط جديد</h3>
-    <div id="destList"></div>
-    <button type="button" class="formBtn secondary" id="addDestBtn">إضافة وجهة</button>
-    <button type="button" class="formBtn primary" id="saveLinkBtn">حفظ الرابط</button>
-    <button type="button" class="formBtn secondary" id="cancelFormBtn">إلغاء</button>
-  </div>
-  <div id="infoFormPanel">
-    <h3 id="infoFormTitle">معلومة جديدة</h3>
-    <textarea id="infoTextArea" placeholder="اكتب المعلومة هنا..."></textarea>
-    <button type="button" class="formBtn primary" id="saveInfoBtn">حفظ المعلومة</button>
-    <button type="button" class="formBtn secondary" id="cancelInfoBtn">إلغاء</button>
-  </div>
-  <div id="bulkOverlay"></div>
-  <div id="bulkResultPanel">
-    <h3 id="bulkResultTitle">تم إنشاء الروابط</h3>
-    <p id="bulkResultSummary"></p>
-    <div class="pages" id="bulkResultPages"></div>
-    <button type="button" class="formBtn primary" id="bulkResultOkBtn">حسنًا</button>
-  </div>
   <script src="${PDF_JS_URL}"><\/script>
   <script>
     (function() {
@@ -158,25 +68,11 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
       var numPages = 0;
       var currentPage = PDF_PAGE;
       var container = document.getElementById('container');
-      var pageInfo = document.getElementById('pageInfo');
-      var pageInput = document.getElementById('pageInput');
-      var pageTotal = document.getElementById('pageTotal');
       var errEl = document.getElementById('error');
-      var formPanel = document.getElementById('formPanel');
-      var formTitle = document.getElementById('formTitle');
-      var destList = document.getElementById('destList');
-      var infoFormPanel = document.getElementById('infoFormPanel');
-      var infoTextArea = document.getElementById('infoTextArea');
-      var infoFormTitle = document.getElementById('infoFormTitle');
-      var addLinkBtn = document.getElementById('addLinkBtn');
-      var addInfoBtn = document.getElementById('addInfoBtn');
       var addMode = false;
       var infoMode = false;
       var drawStart = null;
       var drawRectEl = null;
-      var draftRect = null;
-      var draftDestinations = [{ title: '', page: 1 }];
-      var draftInfoPosition = null;
       var wrapEl = null;
       var canvasW = 0, canvasH = 0;
       var searchResults = [];
@@ -196,13 +92,6 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
       function renderPage(n) {
         if (!pdfDoc || n < 1 || n > numPages) return;
         currentPage = n;
-        pageTotal.textContent = 'من ' + numPages;
-        if (pageInput) {
-          pageInput.value = String(n);
-          pageInput.max = numPages;
-        }
-        document.getElementById('prevBtn').disabled = n <= 1;
-        document.getElementById('nextBtn').disabled = n >= numPages;
         container.innerHTML = '';
         var pageLinks = Array.isArray(PDF_LINKS) ? PDF_LINKS.filter(function(l) { return l.page === n; }) : [];
         var pageInfoBubbles = Array.isArray(PDF_INFO_BUBBLES) ? PDF_INFO_BUBBLES.filter(function(i) { return i.page === n; }) : [];
@@ -213,7 +102,7 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
             ? Math.max(0.1, Math.min(2.5, (winW - 16) / v1.width))
             : 1;
           var pixelRatio = Math.min(window.devicePixelRatio || 1, 3);
-          var maxZoom = 3;
+          var maxZoom = 8;
           var scale = baseScale * pixelRatio * maxZoom;
           var viewport = p.getViewport({ scale: scale });
           canvasW = viewport.width / (pixelRatio * maxZoom);
@@ -281,11 +170,13 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
         var r = wrapEl.getBoundingClientRect();
         var x = (ev.clientX - r.left) / r.width;
         var y = (ev.clientY - r.top) / r.height;
-        draftInfoPosition = {
+        var position = {
           x: Math.max(0, Math.min(1, x)),
           y: Math.max(0, Math.min(1, y))
         };
-        showInfoForm();
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'infoPositionTapped', page: currentPage, position: position }));
+        }
       }
 
       function onDrawStart(ev) {
@@ -348,108 +239,35 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
         var w = Math.abs(x - drawStart.x);
         var h = Math.abs(y - drawStart.y);
         if (w < 0.02 || h < 0.02) { drawRectEl.remove(); drawRectEl = null; drawStart = null; return; }
-        draftRect = { x: left, y: top, width: w, height: h };
+        var rect = { x: left, y: top, width: w, height: h };
         drawRectEl.remove();
         drawRectEl = null;
         drawStart = null;
-        showForm();
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'linkRectDrawn', page: currentPage, rect: rect }));
+        }
       }
 
       function onDrawEndTouch(ev) {
         if (ev.changedTouches && ev.changedTouches[0]) onDrawEnd(ev.changedTouches[0]);
       }
 
-      function showForm() {
-        draftDestinations = [{ title: '', page: currentPage }];
-        renderDestList();
-        formTitle.textContent = 'رابط جديد (صفحة ' + currentPage + ')';
-        formPanel.classList.add('visible');
-      }
-
-      function renderDestList() {
-        destList.innerHTML = '';
-        draftDestinations.forEach(function(d, i) {
-          var row = document.createElement('div');
-          row.className = 'destRow';
-          row.innerHTML = '<input type="text" placeholder="العنوان" data-idx="' + i + '" data-field="title" value="' + (d.title || '').replace(/"/g, '&quot;') + '">' +
-            '<input type="number" min="1" placeholder="الصفحة" data-idx="' + i + '" data-field="page" value="' + (d.page || 1) + '">';
-          destList.appendChild(row);
-        });
-        destList.querySelectorAll('input').forEach(function(inp) {
-          inp.onchange = syncDraft;
-          inp.oninput = syncDraft;
-        });
-      }
-
-      function showInfoForm() {
-        if (!draftInfoPosition) return;
-        if (infoFormTitle) {
-          infoFormTitle.textContent = 'معلومة جديدة (صفحة ' + currentPage + ')';
-        }
-        if (infoTextArea) {
-          infoTextArea.value = '';
-          infoTextArea.focus();
-        }
-        infoFormPanel.classList.add('visible');
-      }
-
-      function syncDraft() {
-        destList.querySelectorAll('.destRow').forEach(function(row, i) {
-          var titleInp = row.querySelector('input[data-field="title"]');
-          var pageInp = row.querySelector('input[data-field="page"]');
-          if (draftDestinations[i]) {
-            draftDestinations[i].title = titleInp ? titleInp.value : '';
-            draftDestinations[i].page = pageInp ? Math.max(1, parseInt(pageInp.value, 10) || 1) : 1;
-          }
-        });
-      }
-
-      document.getElementById('addDestBtn').onclick = function() {
-        syncDraft();
-        draftDestinations.push({ title: '', page: currentPage });
-        renderDestList();
-      };
-
-      addLinkBtn.onclick = function() {
-        addMode = !addMode;
-        if (addMode) {
-          infoMode = false;
-          if (addInfoBtn) addInfoBtn.classList.remove('active');
-        }
-        addLinkBtn.classList.toggle('active', addMode);
+      window.setAddLinkMode = function(on) {
+        addMode = !!on;
+        if (addMode) infoMode = false;
         setupDraw();
       };
-
-      if (addInfoBtn) {
-        addInfoBtn.onclick = function() {
-          infoMode = !infoMode;
-          if (infoMode) {
-            addMode = false;
-            addLinkBtn.classList.remove('active');
-          }
-          addInfoBtn.classList.toggle('active', infoMode);
-          setupDraw();
-        };
-      }
-
-      document.getElementById('prevBtn').onclick = function() { if (currentPage > 1) { renderPage(currentPage - 1); notifyPage(currentPage - 1); } };
-      document.getElementById('nextBtn').onclick = function() { if (currentPage < numPages) { renderPage(currentPage + 1); notifyPage(currentPage + 1); } };
-
-      if (pageInput) {
-        pageInput.addEventListener('change', function() {
-          var p = parseInt(this.value, 10);
-          if (!isNaN(p) && p >= 1 && p <= numPages) { renderPage(p); notifyPage(p); }
-          else this.value = String(currentPage);
-        });
-        pageInput.addEventListener('keydown', function(e) {
-          if (e.key === 'Enter') {
-            var p = parseInt(this.value, 10);
-            if (!isNaN(p) && p >= 1 && p <= numPages) { renderPage(p); notifyPage(p); }
-            else this.value = String(currentPage);
-            e.preventDefault();
-          }
-        });
-      }
+      window.setAddInfoMode = function(on) {
+        infoMode = !!on;
+        if (infoMode) addMode = false;
+        setupDraw();
+      };
+      window.editorPrevPage = function() {
+        if (currentPage > 1) { renderPage(currentPage - 1); notifyPage(currentPage - 1); }
+      };
+      window.editorNextPage = function() {
+        if (currentPage < numPages) { renderPage(currentPage + 1); notifyPage(currentPage + 1); }
+      };
 
       if (typeof pdfjsLib === 'undefined') { showErr('تعذر تحميل pdf.js'); return; }
       try { pdfjsLib.GlobalWorkerOptions.workerSrc = ${JSON.stringify(PDF_WORKER_URL)}; } catch (e) {}
@@ -473,57 +291,26 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
         notifyPage(p);
       };
 
-      function updateSearchInfo() {
-        var searchInfo = document.getElementById('searchInfo');
-        var resultsRow = document.getElementById('resultsRow');
-        var resultsText = document.getElementById('resultsText');
-        var toolbar = document.getElementById('toolbar');
-        var containerEl = document.getElementById('container');
-        
-        if (!searchInfo) return;
-        
-        var hasResults = bulkMatchRects.length > 0;
-        
-        if (searchInProgress) {
-          searchInfo.textContent = 'جارٍ البحث...';
-          if (resultsRow) resultsRow.classList.remove('visible');
-          if (toolbar) toolbar.classList.remove('has-results');
-          if (containerEl) containerEl.classList.remove('has-results');
-        } else if (hasResults) {
-          var matchCount = bulkMatchRects.length;
-          var pageCount = searchResults.length;
-          searchInfo.textContent = matchCount + ' نتيجة';
-          if (resultsText) {
-            resultsText.textContent = matchCount + ' نتيجة على ' + pageCount + ' صفحة';
-          }
-          if (resultsRow) resultsRow.classList.add('visible');
-          if (toolbar) toolbar.classList.add('has-results');
-          if (containerEl) containerEl.classList.add('has-results');
-        } else if (searchQuery) {
-          searchInfo.textContent = 'لا توجد نتائج';
-          if (resultsRow) resultsRow.classList.remove('visible');
-          if (toolbar) toolbar.classList.remove('has-results');
-          if (containerEl) containerEl.classList.remove('has-results');
-        } else {
-          searchInfo.textContent = '—';
-          if (resultsRow) resultsRow.classList.remove('visible');
-          if (toolbar) toolbar.classList.remove('has-results');
-          if (containerEl) containerEl.classList.remove('has-results');
+      function notifySearchResults() {
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'editorSearchResults',
+            inProgress: searchInProgress,
+            matchCount: bulkMatchRects.length,
+            query: searchQuery
+          }));
         }
       }
 
-      async function performSearch() {
+      async function performSearch(queryFromNative) {
         if (!pdfDoc || searchInProgress) return;
         
-        var searchInputEl = document.getElementById('searchInput');
-        if (!searchInputEl) return;
-        
-        var query = searchInputEl.value.trim();
+        var query = (typeof queryFromNative === 'string' ? queryFromNative : '').trim();
         if (!query) {
           searchQuery = '';
           searchResults = [];
           bulkMatchRects = [];
-          updateSearchInfo();
+          notifySearchResults();
           return;
         }
 
@@ -531,7 +318,7 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
         searchResults = [];
         bulkMatchRects = [];
         searchInProgress = true;
-        updateSearchInfo();
+        notifySearchResults();
 
         try {
           for (var pageNum = 1; pageNum <= numPages; pageNum++) {
@@ -596,162 +383,31 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
           showErr('خطأ أثناء البحث: ' + (e.message || e));
         } finally {
           searchInProgress = false;
-          updateSearchInfo();
+          notifySearchResults();
         }
       }
 
-      var searchBtn = document.getElementById('searchBtn');
-      var searchInputEl = document.getElementById('searchInput');
-      var linkAllBtn = document.getElementById('linkAllBtn');
-      var bulkOverlay = document.getElementById('bulkOverlay');
-      var bulkResultPanel = document.getElementById('bulkResultPanel');
-      var bulkResultOkBtn = document.getElementById('bulkResultOkBtn');
-      
-      if (searchBtn) {
-        searchBtn.onclick = performSearch;
-      }
-      
-      if (searchInputEl) {
-        searchInputEl.onkeydown = function(e) {
-          if (e.key === 'Enter') {
-            performSearch();
-          }
-        };
-      }
+      window.performSearch = function(q) { performSearch(q); };
 
-      function showBulkForm() {
+      window.requestBulkFormData = function() {
         if (bulkMatchRects.length === 0) return;
-        bulkLinkMode = true;
-        draftDestinations = [{ title: '', page: currentPage }];
-        renderDestList();
-        formTitle.textContent = 'ربط ' + bulkMatchRects.length + ' نتيجة لعبارة "' + searchQuery + '"';
-        formPanel.classList.add('visible');
-      }
-
-      function showBulkResult(linkCount, pages) {
-        var summaryEl = document.getElementById('bulkResultSummary');
-        var pagesEl = document.getElementById('bulkResultPages');
-        if (summaryEl) {
-          summaryEl.textContent = 'تم إنشاء ' + linkCount + ' رابط بنجاح';
-        }
-        if (pagesEl) {
-          var uniquePages = pages.filter(function(p, i, arr) { return arr.indexOf(p) === i; }).sort(function(a, b) { return a - b; });
-          pagesEl.textContent = 'الصفحات: ' + uniquePages.join(', ');
-        }
-        if (bulkOverlay) bulkOverlay.classList.add('visible');
-        if (bulkResultPanel) bulkResultPanel.classList.add('visible');
-      }
-
-      function hideBulkResult() {
-        if (bulkOverlay) bulkOverlay.classList.remove('visible');
-        if (bulkResultPanel) bulkResultPanel.classList.remove('visible');
-        
-        // Notify React Native that the result was dismissed - this triggers the state update
         if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'bulkResultDismissed' }));
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'bulkFormData',
+            matches: bulkMatchRects,
+            query: searchQuery
+          }));
         }
-        
-        // Clear search after dismissing the result
+      };
+
+      window.clearSearchAndNotify = function() {
         bulkMatchRects = [];
         searchQuery = '';
         searchResults = [];
-        if (searchInputEl) searchInputEl.value = '';
-        updateSearchInfo();
-      }
-
-      if (linkAllBtn) {
-        linkAllBtn.onclick = showBulkForm;
-      }
-
-      if (bulkResultOkBtn) {
-        bulkResultOkBtn.onclick = hideBulkResult;
-      }
-
-      if (bulkOverlay) {
-        bulkOverlay.onclick = hideBulkResult;
-      }
-
-      // Save button handler - handles both single link and bulk link modes
-      document.getElementById('saveLinkBtn').onclick = function() {
-        syncDraft();
-        var valid = draftDestinations.filter(function(d) { return (d.title || '').trim(); });
-        if (valid.length === 0) { alert('أضف وجهة واحدة على الأقل مع عنوان'); return; }
-
-        if (bulkLinkMode && bulkMatchRects.length > 0) {
-          // Bulk save mode - save all matches in a single message
-          var pages = [];
-          var destinations = valid.map(function(d) { return { title: d.title.trim(), page: d.page }; });
-          var links = [];
-          
-          for (var i = 0; i < bulkMatchRects.length; i++) {
-            var match = bulkMatchRects[i];
-            pages.push(match.page);
-            links.push({
-              page: match.page,
-              rect: match.rect,
-              destinations: destinations
-            });
-          }
-          
-          // Send all links in a single bulk message
-          if (window.ReactNativeWebView) {
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'bulkLinksSaved',
-              links: links
-            }));
-          }
-          
-          formPanel.classList.remove('visible');
-          bulkLinkMode = false;
-          showBulkResult(links.length, pages);
-        } else {
-          // Single link mode (original behavior)
-          if (!draftRect) return;
-          var payload = {
-            type: 'linkSaved',
-            page: currentPage,
-            rect: draftRect,
-            destinations: valid.map(function(d) { return { title: d.title.trim(), page: d.page }; })
-          };
-          if (window.ReactNativeWebView) {
-            window.ReactNativeWebView.postMessage(JSON.stringify(payload));
-          }
-          formPanel.classList.remove('visible');
-          draftRect = null;
-        }
+        notifySearchResults();
       };
 
-      document.getElementById('saveInfoBtn').onclick = function() {
-        var text = infoTextArea ? (infoTextArea.value || '').trim() : '';
-        if (!draftInfoPosition) return;
-        if (!text) {
-          alert('أدخل نص المعلومة');
-          return;
-        }
-        var payload = {
-          type: 'infoBubbleSaved',
-          page: currentPage,
-          position: draftInfoPosition,
-          text: text
-        };
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify(payload));
-        }
-        infoFormPanel.classList.remove('visible');
-        draftInfoPosition = null;
-      };
-
-      // Update cancel button to handle bulk mode
-      document.getElementById('cancelFormBtn').onclick = function() {
-        formPanel.classList.remove('visible');
-        draftRect = null;
-        bulkLinkMode = false;
-      };
-
-      document.getElementById('cancelInfoBtn').onclick = function() {
-        infoFormPanel.classList.remove('visible');
-        draftInfoPosition = null;
-      };
+      window.showBulkForm = window.requestBulkFormData;
     })();
   </script>
 </body>

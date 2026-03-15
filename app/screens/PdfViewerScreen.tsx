@@ -7,6 +7,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  TextInput,
   TextStyle,
   TouchableOpacity,
   useWindowDimensions,
@@ -66,6 +67,8 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
     const pageFromParams = route.params?.page
     return pageFromParams && pageFromParams > 0 ? pageFromParams : 1
   })
+  const [totalPages, setTotalPages] = useState<number | null>(null)
+  const [pageInputStr, setPageInputStr] = useState("1")
   const [fileId, setFileId] = useState<string | null>(null)
   const [isStoring, setIsStoring] = useState(false)
   const [showQrModal, setShowQrModal] = useState(false)
@@ -331,6 +334,7 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
         const message = JSON.parse(event.nativeEvent.data)
         if (message.type === "pageChanged" && typeof message.page === "number") {
           setCurrentPage(message.page)
+          if (typeof message.totalPages === "number") setTotalPages(message.totalPages)
           updateActiveTabPage(message.page)
         }
         if (
@@ -376,6 +380,21 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
     },
     [effectiveFileId, addTab, closeDestinationModal],
   )
+
+  const handlePrevPage = useCallback(() => {
+    webViewRef.current?.injectJavaScript("window.prevPage && window.prevPage();")
+  }, [])
+  const handleNextPage = useCallback(() => {
+    webViewRef.current?.injectJavaScript("window.nextPage && window.nextPage();")
+  }, [])
+  useEffect(() => {
+    setPageInputStr(String(currentPage))
+  }, [currentPage])
+  const handlePageInputSubmit = useCallback(() => {
+    const p = Math.max(1, totalPages != null ? Math.min(totalPages, parseInt(pageInputStr, 10) || 1) : parseInt(pageInputStr, 10) || 1)
+    setPageInputStr(String(p))
+    webViewRef.current?.injectJavaScript(`window.goToPage && window.goToPage(${p});`)
+  }, [pageInputStr, totalPages])
 
   const generateDeepLinkUrl = useCallback(() => {
     if (!effectiveFileId || !effectivePage) return null
@@ -632,6 +651,38 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
               ))}
             </ScrollView>
           )}
+          <View style={themed($pageNavBar)}>
+            <Button
+              tx="pdfViewerScreen:prevPage"
+              onPress={handlePrevPage}
+              disabled={currentPage <= 1}
+              style={themed($pageNavButton)}
+              textStyle={themed($toolbarButtonText)}
+            />
+            <TextInput
+              style={themed($pageInput)}
+              value={pageInputStr}
+              onChangeText={setPageInputStr}
+              onSubmitEditing={handlePageInputSubmit}
+              onBlur={handlePageInputSubmit}
+              keyboardType="number-pad"
+              accessibilityLabel={translate("pdfViewerScreen:pageOfTotal", {
+                current: pageInputStr,
+                total: totalPages != null ? String(totalPages) : "—",
+              })}
+            />
+            <Text style={themed($pageNavText)}>
+              {" / "}
+              {totalPages != null ? totalPages : "—"}
+            </Text>
+            <Button
+              tx="pdfViewerScreen:nextPage"
+              onPress={handleNextPage}
+              disabled={totalPages != null && currentPage >= totalPages}
+              style={themed($pageNavButton)}
+              textStyle={themed($toolbarButtonText)}
+            />
+          </View>
           <WebView
             key={`pdf-${effectiveFileId ?? ""}-${page}-${pdfLinks.length}-${pdfInfoBubbles.length}-${linksRefreshKey}`}
             ref={webViewRef}
@@ -904,6 +955,48 @@ const $toolbarButton: ThemedStyle<ViewStyle> = ({ spacing }) => ({
 const $toolbarButtonText: ThemedStyle<TextStyle> = ({ typography }) => ({
   fontSize: 13,
   fontFamily: typography.primary.medium,
+})
+
+const $pageNavBar: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  flexDirection: I18nManager.isRTL ? "row-reverse" : "row",
+  flexShrink: 0,
+  alignItems: "center",
+  justifyContent: "center",
+  gap: spacing.sm,
+  paddingVertical: spacing.sm,
+  paddingHorizontal: spacing.sm,
+  backgroundColor: colors.palette.neutral800,
+  borderBottomWidth: StyleSheet.hairlineWidth,
+  borderBottomColor: colors.palette.neutral400,
+})
+
+const $pageNavButton: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  minWidth: 72,
+  minHeight: 40,
+  paddingVertical: spacing.xs,
+  paddingHorizontal: spacing.sm,
+})
+
+const $pageInput: ThemedStyle<TextStyle> = ({ colors, typography }) => ({
+  fontSize: 14,
+  fontFamily: typography.primary.medium,
+  color: colors.text,
+  backgroundColor: colors.palette.neutral200,
+  borderWidth: 1,
+  borderColor: colors.palette.neutral400,
+  borderRadius: 6,
+  paddingVertical: 8,
+  paddingHorizontal: 12,
+  minWidth: 48,
+  textAlign: "center",
+})
+
+const $pageNavText: ThemedStyle<TextStyle> = ({ colors, typography }) => ({
+  fontSize: 14,
+  fontFamily: typography.primary.medium,
+  color: colors.text,
+  minWidth: 24,
+  textAlign: "center",
 })
 
 const $loadingText: ThemedStyle<TextStyle> = ({ spacing }) => ({
