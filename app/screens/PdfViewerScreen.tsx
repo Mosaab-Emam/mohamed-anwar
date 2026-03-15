@@ -508,60 +508,60 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
         animationType="fade"
         onRequestClose={() => setLibraryModalVisible(false)}
       >
-        <TouchableOpacity
-          activeOpacity={1}
-          style={[styles.modalOverlay, themed($modalOverlay)]}
-          onPress={() => setLibraryModalVisible(false)}
-        >
           <TouchableOpacity
             activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
-            style={styles.destinationModalWrapper}
+            style={[styles.modalOverlay, themed($modalOverlay)]}
+            onPress={() => setLibraryModalVisible(false)}
           >
-            <View style={themed($destinationModalContent)}>
-              <Text
-                preset="heading"
-                tx="pdfViewerScreen:libraryTitle"
-                style={themed($destinationModalTitle)}
-              />
-              {libraryListLoading ? (
-                <ActivityIndicator size="large" style={themed($libraryListLoading)} />
-              ) : libraryEntries.length === 0 ? (
-                <Text tx="pdfViewerScreen:libraryEmpty" style={themed($libraryEmptyText)} />
-              ) : (
-                <FlatList
-                  data={libraryEntries}
-                  keyExtractor={(item) => item.fileId}
-                  renderItem={({ item }) => (
-                    <TouchableOpacity
-                      style={themed($destinationItem)}
-                      onPress={() => openFromLibrary(item)}
-                      activeOpacity={0.7}
-                    >
-                      <Text
-                        text={item.name}
-                        preset="default"
-                        style={themed($destinationItemText)}
-                        numberOfLines={2}
-                      />
-                    </TouchableOpacity>
-                  )}
-                  style={[
-                    themed($destinationList),
-                    // eslint-disable-next-line react-native/no-inline-styles -- dynamic maxHeight from windowHeight
-                    { minHeight: 160, maxHeight: Math.round(windowHeight * 0.6) },
-                  ]}
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+              style={styles.destinationModalWrapper}
+            >
+              <View style={themed($destinationModalContent)}>
+                <Text
+                  preset="heading"
+                  tx="pdfViewerScreen:libraryTitle"
+                  style={themed($destinationModalTitle)}
                 />
-              )}
-              <Button
-                tx="pdfViewerScreen:close"
-                onPress={() => setLibraryModalVisible(false)}
-                style={themed($cancelQrButton)}
-              />
-            </View>
+                {libraryListLoading ? (
+                  <ActivityIndicator size="large" style={themed($libraryListLoading)} />
+                ) : libraryEntries.length === 0 ? (
+                  <Text tx="pdfViewerScreen:libraryEmpty" style={themed($libraryEmptyText)} />
+                ) : (
+                  <FlatList
+                    data={libraryEntries}
+                    keyExtractor={(item) => item.fileId}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={themed($destinationItem)}
+                        onPress={() => openFromLibrary(item)}
+                        activeOpacity={0.7}
+                      >
+                        <Text
+                          text={item.name}
+                          preset="default"
+                          style={themed($destinationItemText)}
+                          numberOfLines={2}
+                        />
+                      </TouchableOpacity>
+                    )}
+                    style={[
+                      themed($destinationList),
+                      // eslint-disable-next-line react-native/no-inline-styles -- dynamic maxHeight from windowHeight
+                      { minHeight: 160, maxHeight: Math.round(windowHeight * 0.6) },
+                    ]}
+                  />
+                )}
+                <Button
+                  tx="pdfViewerScreen:close"
+                  onPress={() => setLibraryModalVisible(false)}
+                  style={themed($cancelQrButton)}
+                />
+              </View>
+            </TouchableOpacity>
           </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+        </Modal>
 
       {isLoadingBase64 && (
         <View style={[styles.centered, themed($emptyContainer)]}>

@@ -41,8 +41,9 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
     #pageInput { width: 48px; padding: 4px 8px; font-size: 14px; text-align: center; border-radius: 6px; border: 1px solid #555; background: #1a1a1a; color: #eee; }
     .navBtn { background: #444; color: #eee; border: none; padding: 6px 12px; font-size: 14px; border-radius: 6px; cursor: pointer; }
     .navBtn:disabled { opacity: 0.4; cursor: not-allowed; }
-    #container { flex: 1; width: 100%; min-height: 0; overflow: auto; padding: 8px; }
-    .pageWrap { position: relative; display: inline-block; margin: 0 auto 16px; }
+    /* PDF canvas must be LTR or rendering is scrambled (pdf.js #12081) */
+    #container { flex: 1; width: 100%; min-height: 0; overflow: auto; padding: 8px; direction: ltr; }
+    .pageWrap { position: relative; display: inline-block; margin: 0 auto 16px; direction: ltr; }
     .pageWrap canvas { display: block; background: #fff; margin: 0; }
     .linkOverlay { position: absolute; cursor: pointer; pointer-events: auto; left: 0; top: 0; background: rgba(100, 150, 255, 0.2); border: 1px solid rgba(100, 150, 255, 0.6); }
     .linkOverlay:hover { background: rgba(100, 150, 255, 0.35); }
@@ -128,11 +129,14 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
           ? PDF_INFO_BUBBLES.filter(function(i) { return i.page === n; })
           : [];
         pdfDoc.getPage(n).then(function(p) {
-          var v1 = p.getViewport(1);
+          var v1 = p.getViewport({ scale: 1 });
           var winW = window.innerWidth || 300;
-          var scale = v1.width > 0
+          var baseScale = v1.width > 0
             ? Math.max(0.1, Math.min(2.5, (winW - 16) / v1.width))
             : 1;
+          var pixelRatio = Math.min(window.devicePixelRatio || 1, 3);
+          var maxZoom = 3;
+          var scale = baseScale * pixelRatio * maxZoom;
           var viewport = p.getViewport({ scale: scale });
           var canvas = document.createElement('canvas');
           var ctx = canvas.getContext('2d');
@@ -142,10 +146,16 @@ export function getPdfViewerHtml(options: PdfViewerHtmlOptions): string {
           }
           canvas.height = viewport.height;
           canvas.width = viewport.width;
+          var displayW = viewport.width / (pixelRatio * maxZoom);
+          var displayH = viewport.height / (pixelRatio * maxZoom);
+          canvas.style.width = displayW + 'px';
+          canvas.style.height = displayH + 'px';
+          canvas.setAttribute('dir', 'ltr');
           var wrap = document.createElement('div');
           wrap.className = 'pageWrap';
-          wrap.style.width = viewport.width + 'px';
-          wrap.style.height = viewport.height + 'px';
+          wrap.setAttribute('dir', 'ltr');
+          wrap.style.width = displayW + 'px';
+          wrap.style.height = displayH + 'px';
           wrap.appendChild(canvas);
           container.appendChild(wrap);
           for (var i = 0; i < pageLinks.length; i++) {

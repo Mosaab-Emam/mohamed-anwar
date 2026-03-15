@@ -2,7 +2,6 @@ import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ActivityIndicator, Platform, TextStyle, View, ViewStyle } from "react-native"
 import { randomUUID } from "expo-crypto"
 import * as DocumentPicker from "expo-document-picker"
-import * as FileSystem from "expo-file-system/legacy"
 import { WebView } from "react-native-webview"
 
 import { Button } from "@/components/Button"
@@ -111,22 +110,6 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
     }
     storeFile()
   }, [uri, isLocal, picked?.name, fileIdFromParams, fileId])
-
-  useEffect(() => {
-    if (!fileId || !uri || !isLocal) return
-    let cancelled = false
-    setBase64Error(null)
-    FileSystem.readAsStringAsync(uri, { encoding: "base64" })
-      .then((b) => {
-        if (!cancelled) setBase64(b)
-      })
-      .catch((e) => {
-        if (!cancelled) setBase64Error(e?.message ?? "Failed to read file")
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [isLocal, uri, fileId])
 
   const pickDocument = useCallback(async () => {
     try {

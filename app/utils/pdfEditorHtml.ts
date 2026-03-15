@@ -50,9 +50,10 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
     #bulkResultPanel .pages { font-size: 12px; color: #aaa; margin-bottom: 16px; max-height: 100px; overflow-y: auto; }
     #bulkOverlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 25; display: none; }
     #bulkOverlay.visible { display: block; }
-    #container { flex: 1; width: 100%; min-height: 200px; overflow: auto; padding: 96px 8px 16px; }
+    /* PDF canvas must be LTR or rendering is scrambled (pdf.js #12081) */
+    #container { flex: 1; width: 100%; min-height: 200px; overflow: auto; padding: 96px 8px 16px; direction: ltr; }
     #container.has-results { padding-top: 132px; }
-    .pageWrap { position: relative; display: inline-block; margin: 0 auto 16px; }
+    .pageWrap { position: relative; display: inline-block; margin: 0 auto 16px; direction: ltr; }
     .pageWrap canvas { display: block; background: #fff; margin: 0; }
     .linkOverlay { position: absolute; pointer-events: none; background: rgba(100, 150, 255, 0.2); border: 1px solid rgba(100, 150, 255, 0.6); left: 0; top: 0; }
     .infoBubbleOverlay {
@@ -206,23 +207,30 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
         var pageLinks = Array.isArray(PDF_LINKS) ? PDF_LINKS.filter(function(l) { return l.page === n; }) : [];
         var pageInfoBubbles = Array.isArray(PDF_INFO_BUBBLES) ? PDF_INFO_BUBBLES.filter(function(i) { return i.page === n; }) : [];
         pdfDoc.getPage(n).then(function(p) {
-          var v1 = p.getViewport(1);
+          var v1 = p.getViewport({ scale: 1 });
           var winW = window.innerWidth || 300;
-          var scale = v1.width > 0
+          var baseScale = v1.width > 0
             ? Math.max(0.1, Math.min(2.5, (winW - 16) / v1.width))
             : 1;
+          var pixelRatio = Math.min(window.devicePixelRatio || 1, 3);
+          var maxZoom = 3;
+          var scale = baseScale * pixelRatio * maxZoom;
           var viewport = p.getViewport({ scale: scale });
-          canvasW = viewport.width;
-          canvasH = viewport.height;
+          canvasW = viewport.width / (pixelRatio * maxZoom);
+          canvasH = viewport.height / (pixelRatio * maxZoom);
           var canvas = document.createElement('canvas');
           var ctx = canvas.getContext('2d');
           if (!ctx) { showErr('Canvas 2D غير متوفر'); return; }
           canvas.height = viewport.height;
           canvas.width = viewport.width;
+          canvas.style.width = canvasW + 'px';
+          canvas.style.height = canvasH + 'px';
+          canvas.setAttribute('dir', 'ltr');
           wrapEl = document.createElement('div');
           wrapEl.className = 'pageWrap';
-          wrapEl.style.width = viewport.width + 'px';
-          wrapEl.style.height = viewport.height + 'px';
+          wrapEl.setAttribute('dir', 'ltr');
+          wrapEl.style.width = canvasW + 'px';
+          wrapEl.style.height = canvasH + 'px';
           wrapEl.appendChild(canvas);
           pageLinks.forEach(function(link) {
             var r = link.rect || {};
