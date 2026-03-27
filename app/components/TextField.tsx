@@ -152,7 +152,8 @@ export const TextField = forwardRef(function TextField(props: TextFieldProps, re
     $styles.row,
     $inputWrapperStyle,
     status === "error" && { borderColor: colors.error },
-    TextInputProps.multiline && { minHeight: 112 },
+    TextInputProps.multiline && { minHeight: 112, alignItems: "flex-start" as const },
+    !TextInputProps.multiline && { minHeight: 56, alignItems: "center" as const },
     LeftAccessory && { paddingStart: 0 },
     RightAccessory && { paddingEnd: 0 },
     $inputWrapperStyleOverride,
@@ -162,7 +163,8 @@ export const TextField = forwardRef(function TextField(props: TextFieldProps, re
     $inputStyle,
     disabled && { color: colors.textDim },
     isRTL && { textAlign: "right" as TextStyle["textAlign"] },
-    TextInputProps.multiline && { height: "auto" },
+    TextInputProps.multiline && { height: "auto" as const, minHeight: 96 },
+    !TextInputProps.multiline && { minHeight: 48, marginVertical: 4 },
     $inputStyleOverride,
   ]
 
@@ -214,11 +216,11 @@ export const TextField = forwardRef(function TextField(props: TextFieldProps, re
         <TextInput
           ref={input}
           underlineColorAndroid={colors.transparent}
-          textAlignVertical="top"
           placeholder={placeholderContent}
           placeholderTextColor={colors.textDim}
           {...TextInputProps}
           editable={!disabled}
+          textAlignVertical={TextInputProps.multiline ? "top" : "center"}
           style={themed($inputStyles)}
         />
 
@@ -251,7 +253,6 @@ const $labelStyle: ThemedStyle<TextStyle> = ({ spacing }) => ({
 })
 
 const $inputWrapperStyle: ThemedStyle<ViewStyle> = ({ colors }) => ({
-  alignItems: "flex-start",
   borderWidth: 1,
   borderRadius: 4,
   backgroundColor: colors.palette.neutral200,
@@ -265,8 +266,7 @@ const $inputStyle: ThemedStyle<TextStyle> = ({ colors, typography, spacing }) =>
   fontFamily: typography.primary.normal,
   color: colors.text,
   fontSize: 16,
-  height: 24,
-  // https://github.com/facebook/react-native/issues/21720#issuecomment-532642093
+  // Avoid fixed height: it survives Object.assign merges and caps modal/custom inputs (~24px).
   paddingVertical: 0,
   paddingHorizontal: 0,
   marginVertical: spacing.xs,
@@ -289,4 +289,15 @@ const $leftAccessoryStyle: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   height: 40,
   justifyContent: "center",
   alignItems: "center",
+})
+
+/**
+ * Use as `inputWrapperStyle` for TextField inside modals when borders/background live on the
+ * TextInput `style` prop (avoids double chrome). Keeps a minimum tap height aligned with the default wrapper.
+ */
+export const $textFieldModalInputWrapper: ThemedStyle<ViewStyle> = () => ({
+  alignItems: "center",
+  backgroundColor: "transparent",
+  borderWidth: 0,
+  minHeight: 56,
 })

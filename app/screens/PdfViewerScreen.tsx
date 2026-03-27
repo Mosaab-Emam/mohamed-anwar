@@ -391,7 +391,12 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
     setPageInputStr(String(currentPage))
   }, [currentPage])
   const handlePageInputSubmit = useCallback(() => {
-    const p = Math.max(1, totalPages != null ? Math.min(totalPages, parseInt(pageInputStr, 10) || 1) : parseInt(pageInputStr, 10) || 1)
+    const p = Math.max(
+      1,
+      totalPages != null
+        ? Math.min(totalPages, parseInt(pageInputStr, 10) || 1)
+        : parseInt(pageInputStr, 10) || 1,
+    )
     setPageInputStr(String(p))
     webViewRef.current?.injectJavaScript(`window.goToPage && window.goToPage(${p});`)
   }, [pageInputStr, totalPages])
@@ -527,60 +532,65 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
         animationType="fade"
         onRequestClose={() => setLibraryModalVisible(false)}
       >
+        <TouchableOpacity
+          activeOpacity={1}
+          style={[styles.modalOverlay, themed($modalOverlay)]}
+          onPress={() => setLibraryModalVisible(false)}
+        >
           <TouchableOpacity
             activeOpacity={1}
-            style={[styles.modalOverlay, themed($modalOverlay)]}
-            onPress={() => setLibraryModalVisible(false)}
+            onPress={(e) => e.stopPropagation()}
+            style={styles.destinationModalWrapper}
           >
-            <TouchableOpacity
-              activeOpacity={1}
-              onPress={(e) => e.stopPropagation()}
-              style={styles.destinationModalWrapper}
+            <View
+              style={[
+                themed($destinationModalContent),
+                { maxHeight: Math.round(windowHeight * 0.92) },
+              ]}
             >
-              <View style={themed($destinationModalContent)}>
-                <Text
-                  preset="heading"
-                  tx="pdfViewerScreen:libraryTitle"
-                  style={themed($destinationModalTitle)}
+              <Text
+                preset="heading"
+                tx="pdfViewerScreen:libraryTitle"
+                style={themed($destinationModalTitle)}
+              />
+              {libraryListLoading ? (
+                <ActivityIndicator size="large" style={themed($libraryListLoading)} />
+              ) : libraryEntries.length === 0 ? (
+                <Text tx="pdfViewerScreen:libraryEmpty" style={themed($libraryEmptyText)} />
+              ) : (
+                <FlatList
+                  data={libraryEntries}
+                  keyExtractor={(item) => item.fileId}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={themed($destinationItem)}
+                      onPress={() => openFromLibrary(item)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        text={item.name}
+                        preset="default"
+                        style={themed($destinationItemText)}
+                        numberOfLines={2}
+                      />
+                    </TouchableOpacity>
+                  )}
+                  style={[
+                    themed($destinationList),
+                    // eslint-disable-next-line react-native/no-inline-styles -- dynamic maxHeight from windowHeight
+                    { minHeight: 200, maxHeight: Math.round(windowHeight * 0.88) },
+                  ]}
                 />
-                {libraryListLoading ? (
-                  <ActivityIndicator size="large" style={themed($libraryListLoading)} />
-                ) : libraryEntries.length === 0 ? (
-                  <Text tx="pdfViewerScreen:libraryEmpty" style={themed($libraryEmptyText)} />
-                ) : (
-                  <FlatList
-                    data={libraryEntries}
-                    keyExtractor={(item) => item.fileId}
-                    renderItem={({ item }) => (
-                      <TouchableOpacity
-                        style={themed($destinationItem)}
-                        onPress={() => openFromLibrary(item)}
-                        activeOpacity={0.7}
-                      >
-                        <Text
-                          text={item.name}
-                          preset="default"
-                          style={themed($destinationItemText)}
-                          numberOfLines={2}
-                        />
-                      </TouchableOpacity>
-                    )}
-                    style={[
-                      themed($destinationList),
-                      // eslint-disable-next-line react-native/no-inline-styles -- dynamic maxHeight from windowHeight
-                      { minHeight: 160, maxHeight: Math.round(windowHeight * 0.6) },
-                    ]}
-                  />
-                )}
-                <Button
-                  tx="pdfViewerScreen:close"
-                  onPress={() => setLibraryModalVisible(false)}
-                  style={themed($cancelQrButton)}
-                />
-              </View>
-            </TouchableOpacity>
+              )}
+              <Button
+                tx="pdfViewerScreen:close"
+                onPress={() => setLibraryModalVisible(false)}
+                style={themed($cancelQrButton)}
+              />
+            </View>
           </TouchableOpacity>
-        </Modal>
+        </TouchableOpacity>
+      </Modal>
 
       {isLoadingBase64 && (
         <View style={[styles.centered, themed($emptyContainer)]}>
@@ -749,7 +759,12 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
             onPress={(e) => e.stopPropagation()}
             style={styles.destinationModalWrapper}
           >
-            <View style={themed($destinationModalContent)}>
+            <View
+              style={[
+                themed($destinationModalContent),
+                { maxHeight: Math.round(windowHeight * 0.92) },
+              ]}
+            >
               <Text
                 preset="heading"
                 tx="pdfViewerScreen:chooseDestination"
@@ -777,7 +792,7 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
                 style={[
                   themed($destinationList),
                   // eslint-disable-next-line react-native/no-inline-styles -- dynamic maxHeight from windowHeight
-                  { minHeight: 160, maxHeight: Math.round(windowHeight * 0.6) },
+                  { minHeight: 200, maxHeight: Math.round(windowHeight * 0.88) },
                 ]}
               />
               <Button
@@ -802,18 +817,30 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
           onPress={closeInfoBubbleModal}
         >
           <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
-            <View style={themed($infoBubbleModalContent)}>
-              <Text text="معلومة" preset="heading" style={themed($destinationModalTitle)} />
-              <Text
-                text={selectedInfoBubble?.text ?? "لا يوجد نص معلومة."}
-                preset="default"
-                style={themed($infoBubbleText)}
-              />
-              <Button
-                tx="common:cancel"
-                onPress={closeInfoBubbleModal}
-                style={themed($cancelQrButton)}
-              />
+            <View
+              style={[
+                themed($infoBubbleModalContent),
+                { maxHeight: Math.round(windowHeight * 0.92) },
+              ]}
+            >
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator
+                nestedScrollEnabled
+                contentContainerStyle={themed($infoBubbleModalScrollContent)}
+              >
+                <Text text="معلومة" preset="heading" style={themed($destinationModalTitle)} />
+                <Text
+                  text={selectedInfoBubble?.text ?? "لا يوجد نص معلومة."}
+                  preset="default"
+                  style={themed($infoBubbleText)}
+                />
+                <Button
+                  tx="common:cancel"
+                  onPress={closeInfoBubbleModal}
+                  style={themed($cancelQrButton)}
+                />
+              </ScrollView>
             </View>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -831,36 +858,43 @@ export const PdfViewerScreen: FC<PdfStackScreenProps<"PdfView">> = (props) => {
           onPress={() => setShowQrModal(false)}
         >
           <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
-            <View style={themed($qrModalContent)}>
-              <Text preset="heading" tx="pdfViewerScreen:qrCode" style={themed($qrModalTitle)} />
-              {qrError && <Text text={qrError} style={themed($qrErrorText)} />}
-              {qrSaved && <Text tx="pdfViewerScreen:qrSaved" style={themed($qrSuccessText)} />}
-              {generateDeepLinkUrl() && !qrSaved && (
-                <View style={themed($qrCodeContainer)}>
-                  <QRCode
-                    value={generateDeepLinkUrl() ?? ""}
-                    size={250}
-                    quietZone={20}
-                    getRef={(c) => {
-                      qrSvgRef.current = c
-                    }}
-                  />
-                </View>
-              )}
-              {!qrSaved && (
-                <View style={themed($qrModalButtons)}>
-                  <Button
-                    tx="pdfViewerScreen:saveToGallery"
-                    onPress={handleSaveQrToGallery}
-                    style={themed($saveQrButton)}
-                  />
-                  <Button
-                    tx="common:cancel"
-                    onPress={() => setShowQrModal(false)}
-                    style={themed($cancelQrButton)}
-                  />
-                </View>
-              )}
+            <View style={[themed($qrModalContent), { maxHeight: Math.round(windowHeight * 0.92) }]}>
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator
+                nestedScrollEnabled
+                contentContainerStyle={themed($qrModalScrollContent)}
+              >
+                <Text preset="heading" tx="pdfViewerScreen:qrCode" style={themed($qrModalTitle)} />
+                {qrError && <Text text={qrError} style={themed($qrErrorText)} />}
+                {qrSaved && <Text tx="pdfViewerScreen:qrSaved" style={themed($qrSuccessText)} />}
+                {generateDeepLinkUrl() && !qrSaved && (
+                  <View style={themed($qrCodeContainer)}>
+                    <QRCode
+                      value={generateDeepLinkUrl() ?? ""}
+                      size={250}
+                      quietZone={20}
+                      getRef={(c) => {
+                        qrSvgRef.current = c
+                      }}
+                    />
+                  </View>
+                )}
+                {!qrSaved && (
+                  <View style={themed($qrModalButtons)}>
+                    <Button
+                      tx="pdfViewerScreen:saveToGallery"
+                      onPress={handleSaveQrToGallery}
+                      style={themed($saveQrButton)}
+                    />
+                    <Button
+                      tx="common:cancel"
+                      onPress={() => setShowQrModal(false)}
+                      style={themed($cancelQrButton)}
+                    />
+                  </View>
+                )}
+              </ScrollView>
             </View>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -1016,10 +1050,20 @@ const $qrModalContent: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
   padding: spacing.xl,
   width: "100%",
   maxWidth: 400,
+  maxHeight: "96%",
 })
 
 const $qrModalTitle: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   marginBottom: spacing.lg,
+})
+
+const $qrModalScrollContent: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  alignItems: "center",
+  paddingBottom: spacing.sm,
+})
+
+const $infoBubbleModalScrollContent: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  paddingBottom: spacing.sm,
 })
 
 const $destinationModalContent: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
@@ -1029,7 +1073,7 @@ const $destinationModalContent: ThemedStyle<ViewStyle> = ({ colors, spacing }) =
   padding: spacing.xl,
   width: "100%",
   maxWidth: 400,
-  maxHeight: "90%",
+  maxHeight: "96%",
 })
 
 const $infoBubbleModalContent: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
@@ -1039,6 +1083,7 @@ const $infoBubbleModalContent: ThemedStyle<ViewStyle> = ({ colors, spacing }) =>
   padding: spacing.xl,
   width: "100%",
   maxWidth: 400,
+  maxHeight: "96%",
 })
 
 const $destinationModalTitle: ThemedStyle<TextStyle> = ({ spacing }) => ({

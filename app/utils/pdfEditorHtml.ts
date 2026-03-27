@@ -31,9 +31,10 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
     #container { flex: 1; width: 100%; min-height: 200px; overflow: auto; padding: 8px; direction: ltr; }
     .pageWrap { position: relative; display: inline-block; margin: 0 auto 16px; direction: ltr; }
     .pageWrap canvas { display: block; background: #fff; margin: 0; }
-    .linkOverlay { position: absolute; pointer-events: none; background: rgba(100, 150, 255, 0.2); border: 1px solid rgba(100, 150, 255, 0.6); left: 0; top: 0; }
+    .linkOverlay { position: absolute; pointer-events: none; background: rgba(100, 150, 255, 0.2); border: 1px solid rgba(100, 150, 255, 0.6); left: 0; top: 0; z-index: 2; }
     .infoBubbleOverlay {
       position: absolute;
+      z-index: 1;
       width: 24px;
       height: 24px;
       border-radius: 999px;
@@ -48,7 +49,7 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
       border: 1px solid rgba(255, 255, 255, 0.35);
       pointer-events: none;
     }
-    .drawRect { position: absolute; pointer-events: none; background: rgba(255, 200, 80, 0.3); border: 2px solid #e0a020; }
+    .drawRect { position: absolute; z-index: 3; pointer-events: none; background: rgba(255, 200, 80, 0.3); border: 2px solid #e0a020; }
     #error { color: #e74c3c; padding: 16px; }
   </style>
 </head>
@@ -125,10 +126,21 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
             var r = link.rect || {};
             var div = document.createElement('div');
             div.className = 'linkOverlay';
+            var lid = link.id != null ? String(link.id) : '';
+            div.setAttribute('data-link-id', lid);
             div.style.left = (r.x * 100) + '%';
             div.style.top = (r.y * 100) + '%';
             div.style.width = (r.width * 100) + '%';
             div.style.height = (r.height * 100) + '%';
+            div.addEventListener('click', function(ev) {
+              if (addMode || infoMode) return;
+              ev.preventDefault();
+              ev.stopPropagation();
+              var id = div.getAttribute('data-link-id');
+              if (id && window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'existingLinkTapped', linkId: id }));
+              }
+            });
             wrapEl.appendChild(div);
           });
           pageInfoBubbles.forEach(function(infoBubble) {
@@ -149,20 +161,33 @@ export function getPdfEditorHtml(options: PdfEditorHtmlOptions): string {
         }).catch(function(e) { showErr('خطأ في التحميل: ' + (e.message || e)); });
       }
 
+      function refreshLinkHitMode() {
+        if (!wrapEl) return;
+        var list = wrapEl.querySelectorAll('.linkOverlay');
+        var hit = !addMode && !infoMode;
+        for (var i = 0; i < list.length; i++) {
+          list[i].style.pointerEvents = hit ? 'auto' : 'none';
+          list[i].style.cursor = hit ? 'pointer' : 'default';
+        }
+      }
+
       function setupDraw() {
         if (!wrapEl) return;
         if (addMode) {
           wrapEl.onmousedown = onDrawStart;
           wrapEl.ontouchstart = function(e) { e.preventDefault(); onDrawStart(e.touches[0]); };
+          refreshLinkHitMode();
           return;
         }
         if (infoMode) {
           wrapEl.onmousedown = onInfoTap;
           wrapEl.ontouchstart = function(e) { e.preventDefault(); onInfoTap(e.touches[0]); };
+          refreshLinkHitMode();
           return;
         }
         wrapEl.onmousedown = null;
         wrapEl.ontouchstart = null;
+        refreshLinkHitMode();
       }
 
       function onInfoTap(ev) {

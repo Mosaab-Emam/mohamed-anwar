@@ -9,6 +9,7 @@ import {
   StyleSheet,
   TextStyle,
   TouchableOpacity,
+  useWindowDimensions,
   View,
   ViewStyle,
 } from "react-native"
@@ -18,9 +19,10 @@ import { WebView } from "react-native-webview"
 
 import { Button } from "@/components/Button"
 import { EmptyState } from "@/components/EmptyState"
+import { PressableIcon } from "@/components/Icon"
 import { Screen } from "@/components/Screen"
 import { Text } from "@/components/Text"
-import { TextField } from "@/components/TextField"
+import { $textFieldModalInputWrapper, TextField } from "@/components/TextField"
 import { translate } from "@/i18n/translate"
 import { PdfStackScreenProps } from "@/navigators/navigationTypes"
 import { useAppTheme } from "@/theme/context"
@@ -43,9 +45,27 @@ import { useHeader } from "@/utils/useHeader"
 
 type PickedFile = { uri: string; name: string }
 
+type LinkDestinationFormRow = { id: string; title: string; page: string }
+
+function createDestinationFormRow(pageStr: string): LinkDestinationFormRow {
+  return { id: randomUUID(), title: "", page: pageStr }
+}
+
+function destinationsToFormRows(destinations: PdfLinkDestination[]): LinkDestinationFormRow[] {
+  if (destinations.length === 0) {
+    return [createDestinationFormRow("")]
+  }
+  return destinations.map((d) => ({
+    id: randomUUID(),
+    title: d.title,
+    page: String(d.page),
+  }))
+}
+
 export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (props) => {
   const { route, navigation } = props
   const { themed, theme } = useAppTheme()
+  const { height: windowHeight } = useWindowDimensions()
   const [picked, setPicked] = useState<PickedFile | null>(null)
   const [base64, setBase64] = useState<string | null>(null)
   const [base64Error, setBase64Error] = useState<string | null>(null)
@@ -64,9 +84,10 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
   const [linkFormVisible, setLinkFormVisible] = useState(false)
   const [linkFormPage, setLinkFormPage] = useState(1)
   const [linkFormRect, setLinkFormRect] = useState<PdfLinkRect | null>(null)
-  const [linkFormDestinations, setLinkFormDestinations] = useState<
-    Array<{ title: string; page: string }>
-  >([{ title: "", page: "" }])
+  const [linkFormDestinations, setLinkFormDestinations] = useState<LinkDestinationFormRow[]>(() => [
+    createDestinationFormRow(""),
+  ])
+  const [editingLinkId, setEditingLinkId] = useState<string | null>(null)
   const [infoFormVisible, setInfoFormVisible] = useState(false)
   const [infoFormPage, setInfoFormPage] = useState(1)
   const [infoFormPosition, setInfoFormPosition] = useState<{ x: number; y: number } | null>(null)
@@ -76,9 +97,9 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
     Array<{ page: number; rect: PdfLinkRect }>
   >([])
   const [bulkFormQuery, setBulkFormQuery] = useState("")
-  const [bulkFormDestinations, setBulkFormDestinations] = useState<
-    Array<{ title: string; page: string }>
-  >([{ title: "", page: "" }])
+  const [bulkFormDestinations, setBulkFormDestinations] = useState<LinkDestinationFormRow[]>(() => [
+    createDestinationFormRow(""),
+  ])
   const webViewRef = useRef<WebView>(null)
   /** Page to open when the editor HTML is (re)loaded. Only updated when we force a reload (e.g. after saving a link), not on every Next/Prev. */
   const pageForLoadRef = useRef(1)
@@ -200,11 +221,26 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
             typeof rect.width === "number" &&
             typeof rect.height === "number"
           ) {
+            setEditingLinkId(null)
             setLinkFormPage(page)
             setLinkFormRect(rect)
-            setLinkFormDestinations([{ title: "", page: String(editorPage) }])
+            setLinkFormDestinations([createDestinationFormRow(String(editorPage))])
             setLinkFormVisible(true)
           }
+        }
+        if (message.type === "existingLinkTapped" && typeof message.linkId === "string" && fileId) {
+          const link = editorLinks.find((l) => l.id === message.linkId)
+          if (!link) return
+          setAddLinkMode(false)
+          setAddInfoMode(false)
+          webViewRef.current?.injectJavaScript(
+            "window.setAddLinkMode&&window.setAddLinkMode(false);window.setAddInfoMode&&window.setAddInfoMode(false);",
+          )
+          setEditingLinkId(link.id)
+          setLinkFormPage(link.page)
+          setLinkFormRect(link.rect)
+          setLinkFormDestinations(destinationsToFormRows(link.destinations))
+          setLinkFormVisible(true)
         }
         if (message.type === "infoPositionTapped") {
           const { page, position } = message
@@ -233,7 +269,7 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
           if (matches.length > 0) {
             setBulkFormMatches(matches)
             setBulkFormQuery(typeof message.query === "string" ? message.query : "")
-            setBulkFormDestinations([{ title: "", page: String(editorPage) }])
+            setBulkFormDestinations([createDestinationFormRow(String(editorPage))])
             setBulkFormVisible(true)
           }
         }
@@ -366,7 +402,7 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
   }, [])
 
   const parseDestinations = useCallback(
-    (rows: Array<{ title: string; page: string }>): PdfLinkDestination[] =>
+    (rows: LinkDestinationFormRow[]): PdfLinkDestination[] =>
       rows
         .map((r) => ({
           title: r.title.trim(),
@@ -376,17 +412,74 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
     [],
   )
 
+  const removeLinkFormDestination = useCallback((rowId: string) => {
+    setLinkFormDestinations((prev) => {
+      if (prev.length <= 1) return prev
+      return prev.filter((r) => r.id !== rowId)
+    })
+  }, [])
+
+  const removeBulkFormDestination = useCallback((rowId: string) => {
+    setBulkFormDestinations((prev) => {
+      if (prev.length <= 1) return prev
+      return prev.filter((r) => r.id !== rowId)
+    })
+  }, [])
+
   const closeLinkForm = useCallback(() => {
+    setAddLinkMode(false)
     setLinkFormVisible(false)
     setLinkFormRect(null)
+    setEditingLinkId(null)
     webViewRef.current?.injectJavaScript("window.setAddLinkMode && window.setAddLinkMode(false);")
   }, [])
 
+  const confirmRemoveEditedLink = useCallback(() => {
+    if (!editingLinkId || !fileId) return
+    Alert.alert(
+      translate("pdfLinkEditorScreen:deleteLinkConfirmTitle"),
+      translate("pdfLinkEditorScreen:deleteLinkConfirmMessage"),
+      [
+        { text: translate("common:cancel"), style: "cancel" },
+        {
+          text: translate("pdfLinkEditorScreen:deleteLink"),
+          style: "destructive",
+          onPress: () => {
+            const newLinks = editorLinks.filter((l) => l.id !== editingLinkId)
+            setEditorLinks(newLinks)
+            updateLibraryEntryLinks(fileId, newLinks, editorInfoBubbles)
+            setAddLinkMode(false)
+            setLinkFormVisible(false)
+            setEditingLinkId(null)
+            setLinkFormRect(null)
+            webViewRef.current?.injectJavaScript(
+              "window.setAddLinkMode && window.setAddLinkMode(false);",
+            )
+          },
+        },
+      ],
+    )
+  }, [editingLinkId, fileId, editorLinks, editorInfoBubbles])
+
   const saveLinkForm = useCallback(() => {
-    if (!fileId || !linkFormRect) return
+    if (!fileId) return
     const destinations = parseDestinations(linkFormDestinations)
     if (destinations.length === 0) return
     pageForLoadRef.current = editorPage
+
+    if (editingLinkId) {
+      const newLinks = editorLinks.map((l) => (l.id === editingLinkId ? { ...l, destinations } : l))
+      setEditorLinks(newLinks)
+      updateLibraryEntryLinks(fileId, newLinks, editorInfoBubbles)
+      setAddLinkMode(false)
+      setLinkFormVisible(false)
+      setEditingLinkId(null)
+      setLinkFormRect(null)
+      webViewRef.current?.injectJavaScript("window.setAddLinkMode && window.setAddLinkMode(false);")
+      return
+    }
+
+    if (!linkFormRect) return
     const newLink: PdfLink = {
       id: randomUUID(),
       page: linkFormPage,
@@ -396,11 +489,13 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
     const newLinks = [...editorLinks, newLink]
     setEditorLinks(newLinks)
     updateLibraryEntryLinks(fileId, newLinks, editorInfoBubbles)
+    setAddLinkMode(false)
     setLinkFormVisible(false)
     setLinkFormRect(null)
     webViewRef.current?.injectJavaScript("window.setAddLinkMode && window.setAddLinkMode(false);")
   }, [
     fileId,
+    editingLinkId,
     linkFormRect,
     linkFormPage,
     linkFormDestinations,
@@ -560,6 +655,7 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
                 textStyle={themed($editorToolbarText)}
               />
               <TextField
+                containerStyle={themed($editorToolbarPageField)}
                 style={themed($editorPageInput)}
                 value={pageInputStr}
                 onChangeText={setPageInputStr}
@@ -578,11 +674,18 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
                 style={themed($editorNavBtn)}
                 textStyle={themed($editorToolbarText)}
               />
-              <Button
-                tx="pdfLinkEditorScreen:addLink"
+              <PressableIcon
+                icon="pin"
+                size={22}
+                accessibilityLabel={translate("pdfLinkEditorScreen:addLink")}
+                accessibilityRole="button"
+                color={addLinkMode ? theme.colors.palette.neutral100 : theme.colors.text}
+                containerStyle={[
+                  themed($editorAddLinkIconBtn),
+                  addLinkMode && themed($editorAddLinkIconBtnActive),
+                ]}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 onPress={handleAddLink}
-                style={[themed($editorNavBtn), addLinkMode && themed($editorBtnActive)]}
-                textStyle={themed($editorToolbarText)}
               />
               <Button
                 tx="pdfLinkEditorScreen:addInfo"
@@ -593,6 +696,7 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
             </View>
             <View style={themed($editorToolbarRow)}>
               <TextField
+                containerStyle={themed($editorToolbarSearchField)}
                 style={themed($editorSearchInput)}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
@@ -651,63 +755,131 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
             onPress={(e) => e.stopPropagation()}
             style={styles.modalContentWrap}
           >
-            <View style={themed($formModalContent)}>
-              <Text
-                preset="heading"
-                tx="pdfLinkEditorScreen:saveLink"
-                style={themed($formModalTitle)}
-              />
-              <ScrollView style={themed($formModalScroll)} keyboardShouldPersistTaps="handled">
+            <View
+              style={[themed($formModalContent), { maxHeight: Math.round(windowHeight * 0.92) }]}
+            >
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator
+                nestedScrollEnabled
+                contentContainerStyle={themed($formModalScrollContent)}
+              >
+                {editingLinkId ? (
+                  <Text
+                    preset="heading"
+                    tx="pdfLinkEditorScreen:editLink"
+                    style={themed($formModalTitle)}
+                  />
+                ) : (
+                  <Text
+                    preset="heading"
+                    tx="pdfLinkEditorScreen:saveLink"
+                    style={themed($formModalTitle)}
+                  />
+                )}
                 {linkFormDestinations.map((dest, idx) => (
-                  <View key={idx} style={themed($destinationRow)}>
-                    <TextField
-                      style={themed($destinationTitleInput)}
-                      value={dest.title}
-                      onChangeText={(t) =>
-                        setLinkFormDestinations((prev) => {
-                          const next = [...prev]
-                          next[idx] = { ...next[idx], title: t }
-                          return next
-                        })
-                      }
-                      placeholder={translate("pdfLinkEditorScreen:destinationTitlePlaceholder")}
-                      placeholderTextColor={theme.colors.textDim}
-                    />
-                    <TextField
-                      style={themed($destinationPageInput)}
-                      value={dest.page}
-                      onChangeText={(t) =>
-                        setLinkFormDestinations((prev) => {
-                          const next = [...prev]
-                          next[idx] = { ...next[idx], page: t }
-                          return next
-                        })
-                      }
-                      placeholder="ص"
-                      placeholderTextColor={theme.colors.textDim}
-                      keyboardType="number-pad"
-                    />
+                  <View key={dest.id} style={themed($destinationGroupCard)}>
+                    {linkFormDestinations.length > 1 ? (
+                      <PressableIcon
+                        icon="x"
+                        size={20}
+                        accessibilityLabel={translate(
+                          "pdfLinkEditorScreen:removeDestinationGroupA11y",
+                          { index: idx + 1 },
+                        )}
+                        accessibilityRole="button"
+                        color={theme.colors.textDim}
+                        containerStyle={themed($destinationGroupCloseIcon)}
+                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                        onPress={() => removeLinkFormDestination(dest.id)}
+                      />
+                    ) : null}
+                    <View
+                      style={[
+                        themed($destinationGroupHeader),
+                        linkFormDestinations.length > 1 &&
+                          themed($destinationGroupHeaderPadForClose),
+                      ]}
+                    >
+                      <Text
+                        preset="formLabel"
+                        tx="pdfLinkEditorScreen:destinationGroupLabel"
+                        txOptions={{ index: idx + 1 }}
+                        style={themed($destinationGroupTitle)}
+                      />
+                    </View>
+                    <View style={themed($destinationGroupFields)}>
+                      <TextField
+                        containerStyle={themed($destinationFieldContainer)}
+                        inputWrapperStyle={themed($textFieldModalInputWrapper)}
+                        labelTx="pdfLinkEditorScreen:destinationTitleLabel"
+                        style={themed($destinationTitleInput)}
+                        value={dest.title}
+                        onChangeText={(t) =>
+                          setLinkFormDestinations((prev) => {
+                            const next = [...prev]
+                            const i = next.findIndex((r) => r.id === dest.id)
+                            if (i < 0) return prev
+                            next[i] = { ...next[i], title: t }
+                            return next
+                          })
+                        }
+                        placeholder={translate("pdfLinkEditorScreen:destinationTitlePlaceholder")}
+                        placeholderTextColor={theme.colors.textDim}
+                      />
+                      <TextField
+                        containerStyle={themed($destinationFieldContainer)}
+                        inputWrapperStyle={themed($textFieldModalInputWrapper)}
+                        labelTx="pdfLinkEditorScreen:destinationPageLabel"
+                        style={themed($destinationPageInput)}
+                        value={dest.page}
+                        onChangeText={(t) =>
+                          setLinkFormDestinations((prev) => {
+                            const next = [...prev]
+                            const i = next.findIndex((r) => r.id === dest.id)
+                            if (i < 0) return prev
+                            next[i] = { ...next[i], page: t }
+                            return next
+                          })
+                        }
+                        placeholder={translate("pdfLinkEditorScreen:destinationPagePlaceholder")}
+                        placeholderTextColor={theme.colors.textDim}
+                        keyboardType="number-pad"
+                      />
+                    </View>
                   </View>
                 ))}
-              </ScrollView>
-              <Button
-                tx="pdfLinkEditorScreen:addDestination"
-                onPress={() =>
-                  setLinkFormDestinations((prev) => [
-                    ...prev,
-                    { title: "", page: String(editorPage) },
-                  ])
-                }
-                style={themed($formModalAddBtn)}
-              />
-              <View style={themed($formModalButtons)}>
-                <Button tx="common:cancel" onPress={closeLinkForm} style={themed($formCancelBtn)} />
                 <Button
-                  tx="pdfLinkEditorScreen:saveLink"
-                  onPress={saveLinkForm}
-                  style={themed($formSaveBtn)}
+                  tx="pdfLinkEditorScreen:addDestination"
+                  onPress={() =>
+                    setLinkFormDestinations((prev) => [
+                      ...prev,
+                      createDestinationFormRow(String(editorPage)),
+                    ])
+                  }
+                  style={themed($formModalAddBtn)}
                 />
-              </View>
+                <View style={themed($formModalButtons)}>
+                  <Button
+                    tx="common:cancel"
+                    onPress={closeLinkForm}
+                    style={themed($formCancelBtn)}
+                  />
+                  <Button
+                    tx="pdfLinkEditorScreen:saveLink"
+                    onPress={saveLinkForm}
+                    style={themed($formSaveBtn)}
+                  />
+                </View>
+                {editingLinkId ? (
+                  <Button
+                    tx="pdfLinkEditorScreen:deleteLink"
+                    onPress={confirmRemoveEditedLink}
+                    style={themed($formModalDeleteLinkBtn)}
+                    textStyle={themed($formModalDeleteLinkText)}
+                  />
+                ) : null}
+              </ScrollView>
             </View>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -729,28 +901,44 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
             onPress={(e) => e.stopPropagation()}
             style={styles.modalContentWrap}
           >
-            <View style={themed($formModalContent)}>
-              <Text
-                preset="heading"
-                tx="pdfLinkEditorScreen:addInfo"
-                style={themed($formModalTitle)}
-              />
-              <TextField
-                style={themed($infoTextInput)}
-                value={infoFormText}
-                onChangeText={setInfoFormText}
-                placeholder={translate("pdfLinkEditorScreen:infoPlaceholder")}
-                placeholderTextColor={theme.colors.textDim}
-                multiline
-              />
-              <View style={themed($formModalButtons)}>
-                <Button tx="common:cancel" onPress={closeInfoForm} style={themed($formCancelBtn)} />
-                <Button
-                  tx="pdfLinkEditorScreen:saveInfo"
-                  onPress={saveInfoForm}
-                  style={themed($formSaveBtn)}
+            <View
+              style={[themed($formModalContent), { maxHeight: Math.round(windowHeight * 0.92) }]}
+            >
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator
+                nestedScrollEnabled
+                contentContainerStyle={themed($formModalScrollContent)}
+              >
+                <Text
+                  preset="heading"
+                  tx="pdfLinkEditorScreen:addInfo"
+                  style={themed($formModalTitle)}
                 />
-              </View>
+                <TextField
+                  containerStyle={themed($destinationFieldContainer)}
+                  inputWrapperStyle={themed($textFieldModalInputWrapper)}
+                  labelTx="pdfLinkEditorScreen:infoFieldLabel"
+                  style={themed($infoTextInput)}
+                  value={infoFormText}
+                  onChangeText={setInfoFormText}
+                  placeholder={translate("pdfLinkEditorScreen:infoPlaceholder")}
+                  placeholderTextColor={theme.colors.textDim}
+                  multiline
+                />
+                <View style={themed($formModalButtons)}>
+                  <Button
+                    tx="common:cancel"
+                    onPress={closeInfoForm}
+                    style={themed($formCancelBtn)}
+                  />
+                  <Button
+                    tx="pdfLinkEditorScreen:saveInfo"
+                    onPress={saveInfoForm}
+                    style={themed($formSaveBtn)}
+                  />
+                </View>
+              </ScrollView>
             </View>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -772,72 +960,124 @@ export const PdfLinkEditorScreen: FC<PdfStackScreenProps<"PdfLinkEditor">> = (pr
             onPress={(e) => e.stopPropagation()}
             style={styles.modalContentWrap}
           >
-            <View style={themed($formModalContent)}>
-              <Text
-                preset="heading"
-                tx="pdfLinkEditorScreen:linkAllResults"
-                style={themed($formModalTitle)}
-              />
-              {bulkFormQuery ? (
+            <View
+              style={[themed($formModalContent), { maxHeight: Math.round(windowHeight * 0.92) }]}
+            >
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator
+                nestedScrollEnabled
+                contentContainerStyle={themed($formModalScrollContent)}
+              >
                 <Text
-                  text={`"${bulkFormQuery}" – ${translate("pdfLinkEditorScreen:searchResults", {
-                    count: bulkFormMatches.length,
-                  })}`}
-                  preset="default"
-                  style={themed($formModalSubtitle)}
+                  preset="heading"
+                  tx="pdfLinkEditorScreen:linkAllResults"
+                  style={themed($formModalTitle)}
                 />
-              ) : null}
-              <ScrollView style={themed($formModalScroll)} keyboardShouldPersistTaps="handled">
+                {bulkFormQuery ? (
+                  <Text
+                    text={`"${bulkFormQuery}" – ${translate("pdfLinkEditorScreen:searchResults", {
+                      count: bulkFormMatches.length,
+                    })}`}
+                    preset="default"
+                    style={themed($formModalSubtitle)}
+                  />
+                ) : null}
                 {bulkFormDestinations.map((dest, idx) => (
-                  <View key={idx} style={themed($destinationRow)}>
-                    <TextField
-                      style={themed($destinationTitleInput)}
-                      value={dest.title}
-                      onChangeText={(t) =>
-                        setBulkFormDestinations((prev) => {
-                          const next = [...prev]
-                          next[idx] = { ...next[idx], title: t }
-                          return next
-                        })
-                      }
-                      placeholder={translate("pdfLinkEditorScreen:destinationTitlePlaceholder")}
-                      placeholderTextColor={theme.colors.textDim}
-                    />
-                    <TextField
-                      style={themed($destinationPageInput)}
-                      value={dest.page}
-                      onChangeText={(t) =>
-                        setBulkFormDestinations((prev) => {
-                          const next = [...prev]
-                          next[idx] = { ...next[idx], page: t }
-                          return next
-                        })
-                      }
-                      placeholder="ص"
-                      placeholderTextColor={theme.colors.textDim}
-                      keyboardType="number-pad"
-                    />
+                  <View key={dest.id} style={themed($destinationGroupCard)}>
+                    {bulkFormDestinations.length > 1 ? (
+                      <PressableIcon
+                        icon="x"
+                        size={20}
+                        accessibilityLabel={translate(
+                          "pdfLinkEditorScreen:removeDestinationGroupA11y",
+                          { index: idx + 1 },
+                        )}
+                        accessibilityRole="button"
+                        color={theme.colors.textDim}
+                        containerStyle={themed($destinationGroupCloseIcon)}
+                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                        onPress={() => removeBulkFormDestination(dest.id)}
+                      />
+                    ) : null}
+                    <View
+                      style={[
+                        themed($destinationGroupHeader),
+                        bulkFormDestinations.length > 1 &&
+                          themed($destinationGroupHeaderPadForClose),
+                      ]}
+                    >
+                      <Text
+                        preset="formLabel"
+                        tx="pdfLinkEditorScreen:destinationGroupLabel"
+                        txOptions={{ index: idx + 1 }}
+                        style={themed($destinationGroupTitle)}
+                      />
+                    </View>
+                    <View style={themed($destinationGroupFields)}>
+                      <TextField
+                        containerStyle={themed($destinationFieldContainer)}
+                        inputWrapperStyle={themed($textFieldModalInputWrapper)}
+                        labelTx="pdfLinkEditorScreen:destinationTitleLabel"
+                        style={themed($destinationTitleInput)}
+                        value={dest.title}
+                        onChangeText={(t) =>
+                          setBulkFormDestinations((prev) => {
+                            const next = [...prev]
+                            const i = next.findIndex((r) => r.id === dest.id)
+                            if (i < 0) return prev
+                            next[i] = { ...next[i], title: t }
+                            return next
+                          })
+                        }
+                        placeholder={translate("pdfLinkEditorScreen:destinationTitlePlaceholder")}
+                        placeholderTextColor={theme.colors.textDim}
+                      />
+                      <TextField
+                        containerStyle={themed($destinationFieldContainer)}
+                        inputWrapperStyle={themed($textFieldModalInputWrapper)}
+                        labelTx="pdfLinkEditorScreen:destinationPageLabel"
+                        style={themed($destinationPageInput)}
+                        value={dest.page}
+                        onChangeText={(t) =>
+                          setBulkFormDestinations((prev) => {
+                            const next = [...prev]
+                            const i = next.findIndex((r) => r.id === dest.id)
+                            if (i < 0) return prev
+                            next[i] = { ...next[i], page: t }
+                            return next
+                          })
+                        }
+                        placeholder={translate("pdfLinkEditorScreen:destinationPagePlaceholder")}
+                        placeholderTextColor={theme.colors.textDim}
+                        keyboardType="number-pad"
+                      />
+                    </View>
                   </View>
                 ))}
-              </ScrollView>
-              <Button
-                tx="pdfLinkEditorScreen:addDestination"
-                onPress={() =>
-                  setBulkFormDestinations((prev) => [
-                    ...prev,
-                    { title: "", page: String(editorPage) },
-                  ])
-                }
-                style={themed($formModalAddBtn)}
-              />
-              <View style={themed($formModalButtons)}>
-                <Button tx="common:cancel" onPress={closeBulkForm} style={themed($formCancelBtn)} />
                 <Button
-                  tx="pdfLinkEditorScreen:saveLink"
-                  onPress={saveBulkForm}
-                  style={themed($formSaveBtn)}
+                  tx="pdfLinkEditorScreen:addDestination"
+                  onPress={() =>
+                    setBulkFormDestinations((prev) => [
+                      ...prev,
+                      createDestinationFormRow(String(editorPage)),
+                    ])
+                  }
+                  style={themed($formModalAddBtn)}
                 />
-              </View>
+                <View style={themed($formModalButtons)}>
+                  <Button
+                    tx="common:cancel"
+                    onPress={closeBulkForm}
+                    style={themed($formCancelBtn)}
+                  />
+                  <Button
+                    tx="pdfLinkEditorScreen:saveLink"
+                    onPress={saveBulkForm}
+                    style={themed($formSaveBtn)}
+                  />
+                </View>
+              </ScrollView>
             </View>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -910,10 +1150,36 @@ const $editorNavBtn: ThemedStyle<ViewStyle> = ({ spacing: _spacing }) => ({
   paddingHorizontal: 10,
 })
 
+const $editorAddLinkIconBtn: ThemedStyle<ViewStyle> = ({ colors }) => ({
+  alignItems: "center",
+  backgroundColor: colors.palette.neutral100,
+  borderColor: colors.palette.neutral400,
+  borderRadius: 6,
+  borderWidth: 1,
+  justifyContent: "center",
+  minHeight: 40,
+  minWidth: 40,
+})
+
+const $editorAddLinkIconBtnActive: ThemedStyle<ViewStyle> = ({ colors }) => ({
+  backgroundColor: colors.palette.primary500,
+  borderColor: colors.palette.primary500,
+})
+
 const $editorToolbarText: ThemedStyle<TextStyle> = ({ colors, typography }) => ({
   fontSize: 13,
   fontFamily: typography.primary.medium,
   color: colors.text,
+})
+
+const $editorToolbarPageField: ThemedStyle<ViewStyle> = () => ({
+  minWidth: 52,
+  maxWidth: 72,
+})
+
+const $editorToolbarSearchField: ThemedStyle<ViewStyle> = () => ({
+  flex: 1,
+  minWidth: 0,
 })
 
 const $editorPageInput: ThemedStyle<TextStyle> = ({ colors, typography }) => ({
@@ -928,10 +1194,6 @@ const $editorPageInput: ThemedStyle<TextStyle> = ({ colors, typography }) => ({
   paddingHorizontal: 10,
   minWidth: 44,
   textAlign: "center",
-})
-
-const $editorBtnActive: ThemedStyle<ViewStyle> = ({ colors }) => ({
-  backgroundColor: colors.palette.primary500,
 })
 
 const $editorBtnActiveInfo: ThemedStyle<ViewStyle> = ({ colors }) => ({
@@ -990,7 +1252,7 @@ const $formModalContent: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
   backgroundColor: colors.background,
   borderRadius: 16,
   padding: spacing.xl,
-  maxHeight: "90%",
+  width: "100%",
 })
 
 const $formModalTitle: ThemedStyle<TextStyle> = ({ spacing }) => ({
@@ -1003,20 +1265,58 @@ const $formModalSubtitle: ThemedStyle<TextStyle> = ({ colors, spacing }) => ({
   color: colors.textDim,
 })
 
-const $formModalScroll: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  maxHeight: 200,
+const $formModalScrollContent: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  paddingBottom: spacing.sm,
+})
+
+const $destinationFieldContainer: ThemedStyle<ViewStyle> = () => ({
+  alignSelf: "stretch",
+  width: "100%",
+})
+
+const $destinationGroupCard: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  alignSelf: "stretch",
+  backgroundColor: colors.palette.neutral100,
+  borderColor: colors.palette.neutral300,
+  borderRadius: 12,
+  borderWidth: StyleSheet.hairlineWidth,
+  marginBottom: spacing.md,
+  padding: spacing.md,
+  position: "relative",
+})
+
+const $destinationGroupCloseIcon: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  alignItems: "center",
+  end: spacing.xs,
+  height: 40,
+  justifyContent: "center",
+  position: "absolute",
+  top: spacing.xs,
+  width: 40,
+  zIndex: 1,
+})
+
+const $destinationGroupHeader: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   marginBottom: spacing.sm,
 })
 
-const $destinationRow: ThemedStyle<ViewStyle> = ({ spacing }) => ({
-  flexDirection: I18nManager.isRTL ? "row-reverse" : "row",
-  alignItems: "center",
+const $destinationGroupHeaderPadForClose: ThemedStyle<ViewStyle> = () => ({
+  paddingEnd: 44,
+})
+
+const $destinationGroupTitle: ThemedStyle<TextStyle> = () => ({
+  alignSelf: "stretch",
+})
+
+const $destinationGroupFields: ThemedStyle<ViewStyle> = ({ spacing }) => ({
+  alignSelf: "stretch",
   gap: spacing.sm,
-  marginBottom: spacing.sm,
 })
 
 const $destinationTitleInput: ThemedStyle<TextStyle> = ({ colors, typography }) => ({
-  flex: 1,
+  alignSelf: "stretch",
+  width: "100%",
+  minHeight: 52,
   fontSize: 14,
   fontFamily: typography.primary.medium,
   color: colors.text,
@@ -1024,12 +1324,14 @@ const $destinationTitleInput: ThemedStyle<TextStyle> = ({ colors, typography }) 
   borderWidth: 1,
   borderColor: colors.palette.neutral400,
   borderRadius: 6,
-  paddingVertical: 8,
+  paddingVertical: 10,
   paddingHorizontal: 10,
 })
 
 const $destinationPageInput: ThemedStyle<TextStyle> = ({ colors, typography }) => ({
-  width: 56,
+  alignSelf: "stretch",
+  width: "100%",
+  minHeight: 52,
   fontSize: 14,
   fontFamily: typography.primary.medium,
   color: colors.text,
@@ -1037,13 +1339,29 @@ const $destinationPageInput: ThemedStyle<TextStyle> = ({ colors, typography }) =
   borderWidth: 1,
   borderColor: colors.palette.neutral400,
   borderRadius: 6,
-  paddingVertical: 8,
-  paddingHorizontal: 8,
-  textAlign: "center",
+  paddingVertical: 10,
+  paddingHorizontal: 10,
 })
 
 const $formModalAddBtn: ThemedStyle<ViewStyle> = ({ spacing }) => ({
   marginBottom: spacing.md,
+})
+
+const $formModalDeleteLinkBtn: ThemedStyle<ViewStyle> = ({ colors, spacing }) => ({
+  alignSelf: "stretch",
+  backgroundColor: colors.error,
+  borderRadius: 0,
+  marginBottom: 0,
+  marginTop: spacing.md,
+  minHeight: 48,
+  paddingHorizontal: spacing.md,
+  paddingVertical: spacing.sm,
+})
+
+const $formModalDeleteLinkText: ThemedStyle<TextStyle> = ({ typography }) => ({
+  color: "#FFFFFF",
+  fontFamily: typography.primary.medium,
+  fontSize: 15,
 })
 
 const $formModalButtons: ThemedStyle<ViewStyle> = ({ spacing }) => ({
@@ -1067,9 +1385,9 @@ const $infoTextInput: ThemedStyle<TextStyle> = ({ colors, typography, spacing })
   borderWidth: 1,
   borderColor: colors.palette.neutral400,
   borderRadius: 6,
-  paddingVertical: 8,
+  paddingVertical: 10,
   paddingHorizontal: 10,
-  minHeight: 80,
+  minHeight: 120,
   textAlignVertical: "top",
   marginBottom: spacing.md,
 })
